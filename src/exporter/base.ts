@@ -53,15 +53,43 @@ export abstract class Exporter {
   protected formatDate(dateString: string): string {
     const date = new Date(dateString);
     const locale = this.lang === 'zh' ? 'zh-CN' : 'en-US';
-    return date.toLocaleString(locale, {
+    const timezone = this.context.outputConfig.timezone || this.detectTimezone();
+    const customFormat = this.context.outputConfig.dateFormat;
+
+    const defaultOptions: Intl.DateTimeFormatOptions = {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false
-    });
+      hour12: this.lang === 'en',
+      timeZone: timezone
+    };
+
+    const options: Intl.DateTimeFormatOptions = customFormat
+      ? { timeZone: timezone, ...customFormat }
+      : defaultOptions;
+
+    return date.toLocaleString(locale, options);
+  }
+
+  protected detectTimezone(): string {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  }
+
+  protected getIanaTimezoneLabel(): string {
+    const tz = this.context.outputConfig.timezone || this.detectTimezone();
+    const offsetMinutes = -(new Date().getTimezoneOffset());
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const abs = Math.abs(offsetMinutes);
+    const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+    const mm = String(abs % 60).padStart(2, '0');
+    return `${tz} (UTC${sign}${hh}:${mm})`;
   }
 
   protected getConstraintsDisplay(constraints: any[]): string[] {

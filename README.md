@@ -70,9 +70,23 @@ datadict generate \
 
 5. **组合使用：订单域 + 排除测试数据**
    ```bash
-   --schemas "order_domain" --tables "ord_*,pay_*" --exclude-tables "!*_test_*,!stg_*"
+   --schemas "order_domain" --tables "ord_*,pay_*" --exclude-tables "*_test_*,stg_*"
    ```
    仅在 `order_domain` 下，保留 `ord_` / `pay_` 开头的表，排除测试和 staging 表。
+
+### ⚠️ glob 反例 & 避坑指南（运营必读）
+
+| 反例写法 | 错因 | 后果 | 正确写法 |
+|----------|------|------|----------|
+| `--schemas "app_*, !app_legacy"` （逗号后带空格） | shell 会把 `!app_legacy` 当成下一个参数解析 | 后面参数整体错位，可能把密码当成输出路径 | `"app_*,!app_legacy"` 逗号后**不要加空格** |
+| `--exclude-tables "!*_test_*"` （在 `--exclude-tables` 里再写 `!`前缀） | `--exclude-tables` **列表本身语义就是排除**，再写 `!` 变成"双重否定=包含"，**不会排除** | 审计表/临时表被扫描，字典体积爆炸/泄露不该出现的表 | `--exclude-tables "*_test_*,stg_*"`（去掉 `!`） |
+| `--tables "users, orders, items"` （逗号后空格） | shell 把后两个解析成额外参数，或空格被保留成 pattern 的一部分 | 匹配不到" orders"这种带前置空格的表名 | `"users,orders,items"` 逗号后**不要空格** |
+| `--schemas "tenant_?*_core"` （把 `?` 当多个字符） | `?` 只匹配**恰好 1 个字符**，`?*` 虽然等价于 `*` 但语义不清 | `tenant_12_core`（2位）不会被匹配 | 固定长度用 `???`，变长用 `*` |
+| `--tables "*"` 又 `--exclude-tables "logs"` （精确匹配 vs 模糊混用） | `--exclude-tables` 一样支持通配符，写 `"logs"` **只能精确匹配 logs**，`users_logs` 躲过去 | 大量相关表没被排除，结果仍然巨大 | `--exclude-tables "logs,*_logs,*_log"` |
+| `--schemas "public,App_*"` （大小写敏感） | Postgres 中 unquoted identifier 都是小写，schema/table 名通常全小写 | `"App_*"` 匹配不到 `app_user` | 全部写**小写**：`"public,app_*"` |
+| bash 中写 `--tables *` 不加引号 | shell 会把 `*` 展开为当前目录下的文件名列表 | 参数错乱、报错找不到某个奇怪的表名 | 一定要**双引号包裹**：`--tables "*"` |
+
+> 记忆口诀：**逗号后无空格、字符串加引号、schema/table 全部小写、`!` 只出现在包含列表（--schemas / --tables）里，exclude 列表不要再双重否定。**
 
 ---
 
@@ -112,18 +126,22 @@ datadict generate \
 // 方式 B：Basic Auth（用户名 + 密码）
 "auth": { "type": "basic", "username": "bot", "password": "xxxx" }
 
-// 方式 C：OAuth2 Client Credentials（对 Confluence Data Center，自动 refresh）
+// 方式 C：OAuth2 Client Credentials（企业 SSO，对 Confluence Data Center，自动 refresh）
 "auth": {
   "type": "oauth2",
   "clientId": "xxxxx",
   "clientSecret": "xxxxx",
   "tokenEndpoint": "https://confluence.example.com/oauth/token",
-  "scope": "READ"
+  "scope": "READ",
+  "refreshIntervalSeconds": 300,
+  "minTtlSeconds": 60
 }
 ```
 
 > - PAT 快过期时 `datadict generate` 会在 stderr 打印黄色警告，明确剩余天数。
 > - OAuth2 每次运行自动向 tokenEndpoint 申请新 token，无需手动更换。
+>   - `refreshIntervalSeconds`：企业 SSO 短寿命 token 可配置刷新间隔（例：5分钟=300），默认使用服务端返回的 `expires_in`
+>   - `minTtlSeconds`：剩余有效期小于该秒数时强制刷新，默认 60 秒
 
 ### 3.2 两种拉取策略
 
@@ -153,18 +171,50 @@ datadict generate \
 | 参数 | 说明 |
 |------|------|
 | `--lang zh\|en` | 文档语言（HTML + ERD 标签 + 日期格式） |
-| `--theme light\|dark` | HTML 主题（仅 html） |
+| `--timezone <IANA>` | 时区，见「日期 & 时区本地化」章节 |
+| `--theme light\|dark` | HTML / ERD 主题 |
 | `--no-toc` / `--no-fk` / `--no-index` | 关闭目录、外键、索引 |
 | `--template <path>` | 自定义 EJS 模板（仅 html） |
 
+### Graphviz 安装说明（ERD 图依赖）
+
+`-f erd-svg` 和 `-f erd-png` 会调用系统 `dot`（Graphviz）命令，若未安装会友好报错并指向本节。请按平台安装：
+
+| 平台 | 安装命令 |
+|------|----------|
+| macOS（推荐） | `brew install graphviz` |
+| macOS（官方 dmg） | <https://graphviz.org/download/#mac> |
+| Ubuntu / Debian | `sudo apt install -y graphviz` |
+| RHEL / CentOS | `sudo yum install -y graphviz` |
+| Arch / Manjaro | `sudo pacman -S graphviz` |
+| Windows（Chocolatey） | `choco install graphviz` |
+| Windows（Winget） | `winget install Graphviz.Graphviz` |
+| Windows（官方包） | <https://graphviz.org/download/#windows> |
+
+验证：`dot -V` 能输出版本号即可。
+
 ---
 
-## 五、日期本地化
+## 五、日期 & 时区本地化
 
-HTML 里 `生成时间` 等日期按 `--lang` 调用 `toLocaleDateString` / `toLocaleString`：
+HTML 里 `生成时间` 等日期按 `--lang` 和 `--timezone` 双因子调用 `toLocaleString`：
 
-- `--lang zh` → `2026/6/17 14:30:00`
-- `--lang en` → `6/17/2026, 2:30:00 PM`
+- `--lang zh --timezone Asia/Shanghai` → `2026/06/17 14:30:00`（CST）
+- `--lang en --timezone America/New_York` → `6/17/2026, 2:30:00 AM`（EST + 12h 时差示例）
+
+### 常用时区参考
+
+| IANA 名称 | 常用场景 |
+|-----------|----------|
+| `Asia/Shanghai` | 中国标准时间（UTC+8） |
+| `Asia/Tokyo` | 日本标准时间（UTC+9） |
+| `UTC` | 零时区（跨国团队推荐） |
+| `America/New_York` | 美东时间 |
+| `America/Los_Angeles` | 美西时间 |
+| `Europe/London` | 英国时间 |
+| `Europe/Berlin` | 中欧时间 |
+
+> `--timezone` 未指定时，会自动通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 探测本机时区，页脚会附带 `[IANA (UTC±hh:mm)]` 标签便于审计。
 
 ---
 
@@ -189,6 +239,39 @@ src/
   index.ts                # DataDictionaryGenerator（扫描 → 合并 → 导出 → 写盘）
 templates/html.ejs        # 默认 HTML 模板（已全量 i18n 化）
 ```
+
+---
+
+## 七、FAQ / Troubleshooting
+
+### Q1. `-f erd-svg / erd-png` 报 `dot command not found`
+装 Graphviz！见「§四 → Graphviz 安装说明」。`dot -V` 验证是否在 PATH。
+
+### Q2. ERD 生成出来空白或只有一个点
+常见原因：
+1. **没外键**：所有表之间没有 FK 约束 → 连线为 0，图没意义。可以先 `-f html` 看外键部分。
+2. 只有一张表：同上。
+3. Graphviz 版本过旧：`dot -V` 确认版本 ≥ 2.40。
+
+### Q3. Graphviz 报 syntax error in line xxx near '...'
+某张表/字段名包含 `:`、`<`、`>`、`"` 等 graphviz 特殊字符。先重命名或在业务说明里改别名；后续版本会自动转义。
+
+### Q4. Confluence 拉不到业务说明 / 401 Unauthorized
+1. Bearer：PAT 过期？看 stderr 的黄色警告。
+2. OAuth2：`clientId/secret/tokenEndpoint` 要跟企业 SSO 管理员确认，`scope` 没对会被拒绝。
+3. Basic：用户名 / API Token（不是登录密码！）。
+4. 确认 `apiUrl` 带 `/rest/api`，不要带页面 URL。
+
+### Q5. glob 怎么都匹配不到我想要的 schema
+对照「§一 → glob 反例 & 避坑指南」。常见 3 坑：
+1. 逗号后加了空格 → 整体被拆成两个参数。
+2. `*` 没加引号，被 shell 展开成文件名。
+3. 大写开头 → Postgres 默认全小写，全部小写写。
+
+### Q6. 日期时间不对（跟实际差 8 小时）
+加 `--timezone Asia/Shanghai`（按你的真实时区），或改成 `--timezone UTC` 统一。
+
+---
 
 ## License
 

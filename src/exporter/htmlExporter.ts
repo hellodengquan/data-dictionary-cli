@@ -61,6 +61,7 @@ export class HtmlExporter extends Exporter {
         type: this.context.metadata.databaseType,
         version: this.context.metadata.version
       },
+      timezoneLabel: this.getIanaTimezoneLabel(),
       statistics: {
         tableCount: this.context.metadata.tables.length,
         columnCount: this.context.metadata.tables.reduce((sum, t) => sum + t.columns.length, 0)

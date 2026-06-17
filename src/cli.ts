@@ -43,6 +43,7 @@ program
   .option('--no-fk', '不显示外键信息')
   .option('--no-index', '不显示索引信息')
   .option('--lang <lang>', '文档语言: zh(中文) 或 en(英文)', 'zh')
+  .option('--timezone <tz>', '时区 IANA name，例如 Asia/Shanghai、America/New_York、UTC。默认自动探测。')
   .option('--theme <theme>', 'HTML 主题: light 或 dark', 'light')
   .option('--template <path>', '自定义 EJS 模板路径')
   .option('--business-config <path>', '业务说明配置文件路径')
@@ -134,7 +135,8 @@ function buildConfigFromOptions(options: any): GeneratorConfig {
     tableOfContents: options.toc !== false,
     theme: options.theme,
     template: options.template ? path.resolve(options.template) : undefined,
-    lang: options.lang
+    lang: options.lang,
+    timezone: options.timezone
   };
 
   let business: BusinessConfig | undefined;

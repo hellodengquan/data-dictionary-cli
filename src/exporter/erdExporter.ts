@@ -52,6 +52,20 @@ export abstract class GraphvizErdExporter extends Exporter {
       let dotBin = 'dot';
       if (process.platform === 'win32') dotBin = 'dot.exe';
 
+      const readmeRef =
+        process.platform === 'darwin'
+          ? '  macOS:   brew install graphviz\n' +
+            '            Or: https://graphviz.org/download/#mac'
+          : process.platform === 'linux'
+          ? '  Ubuntu/Debian:  sudo apt install -y graphviz\n' +
+            '  RHEL/CentOS:   sudo yum install -y graphviz\n' +
+            '  Arch:          sudo pacman -S graphviz'
+          : process.platform === 'win32'
+          ? '  Windows (choco):  choco install graphviz\n' +
+            '  Windows (winget): winget install Graphviz.Graphviz\n' +
+            '  Official installer: https://graphviz.org/download/#windows'
+          : '  See https://graphviz.org/download/';
+
       const proc = child_process.spawn(dotBin, [`-T${format}`], {
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -66,11 +80,9 @@ export abstract class GraphvizErdExporter extends Exporter {
         if (err.code === 'ENOENT') {
           reject(
             new Error(
-              `[ERD] 'dot' command not found. Please install Graphviz first:\n` +
-                `  macOS:   brew install graphviz\n` +
-                `  Ubuntu:  apt install graphviz\n` +
-                `  Windows: choco install graphviz\n` +
-                `  Or download from https://graphviz.org/download/`
+              `[ERD] Graphviz 'dot' command not found. It is required to export ERD diagrams as ${format.toUpperCase()}.\n` +
+                `\nInstall Graphviz first, then retry:\n${readmeRef}\n\n` +
+                `See README §四 (Output formats) & §六 (FAQ / Troubleshooting) for detailed instructions.`
             )
           );
         } else {
@@ -81,10 +93,31 @@ export abstract class GraphvizErdExporter extends Exporter {
       proc.on('close', (code) => {
         if (code !== 0) {
           const errMsg = Buffer.concat(errChunks).toString('utf-8').trim();
-          reject(new Error(`Graphviz dot failed (exit ${code}): ${errMsg || 'unknown error'}`));
+          const hint =
+            (errMsg || '').includes('syntax') || (errMsg || '').toLowerCase().includes('error')
+              ? `\n\n[Hint] Check that the database doesn't contain table/column names using special chars graphviz doesn't like (colon, angle brackets, quotes).\n` +
+                `See README §六 (FAQ).`
+              : '';
+          reject(
+            new Error(
+              `Graphviz dot failed (exit ${code}): ${errMsg || 'unknown error'}${hint}`
+            )
+          );
           return;
         }
-        resolve(Buffer.concat(chunks));
+        const result = Buffer.concat(chunks);
+        if (result.length === 0) {
+          reject(
+            new Error(
+              `[ERD] Graphviz returned empty output. Possible causes:\n` +
+                `  1) No tables or no foreign keys in the metadata\n` +
+                `  2) Graphviz version is too old\n` +
+                `See README §六 (FAQ / Troubleshooting).`
+            )
+          );
+          return;
+        }
+        resolve(result);
       });
 
       proc.stdin.write(dot);

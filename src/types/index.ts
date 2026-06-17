@@ -105,6 +105,8 @@ export interface ConfluenceAuthOAuth2 {
   clientSecret: string;
   tokenEndpoint: string;
   scope?: string;
+  refreshIntervalSeconds?: number;
+  minTtlSeconds?: number;
 }
 
 export type ConfluenceAuth = ConfluenceAuthBasic | ConfluenceAuthBearer | ConfluenceAuthOAuth2;
@@ -143,6 +145,8 @@ export interface OutputConfig {
   theme?: 'light' | 'dark';
   template?: string;
   lang?: 'zh' | 'en';
+  timezone?: string;
+  dateFormat?: Intl.DateTimeFormatOptions;
 }
 
 export interface ScanConfig {

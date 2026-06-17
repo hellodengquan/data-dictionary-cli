@@ -90,7 +90,10 @@ export class BusinessMerger {
   }
 
   private async getOAuth2AccessToken(auth: ConfluenceAuthOAuth2): Promise<string> {
-    if (this.oauth2TokenCache && this.oauth2TokenCache.expiresAt - Date.now() > 60_000) {
+    const minTtlSeconds = auth.minTtlSeconds ?? 60;
+    const now = Date.now();
+
+    if (this.oauth2TokenCache && this.oauth2TokenCache.expiresAt - now > minTtlSeconds * 1000) {
       return this.oauth2TokenCache.token;
     }
 
@@ -114,10 +117,17 @@ export class BusinessMerger {
       30_000
     );
 
-    const expiresIn = tokenResp.expires_in ?? 3600;
+    let expiresIn = tokenResp.expires_in ?? 3600;
+    if (auth.refreshIntervalSeconds && auth.refreshIntervalSeconds > 0) {
+      expiresIn = Math.min(expiresIn, auth.refreshIntervalSeconds);
+    }
+
+    const bufferSeconds = Math.min(minTtlSeconds, Math.floor(expiresIn / 2));
+    const expiresAt = now + (expiresIn - bufferSeconds) * 1000;
+
     this.oauth2TokenCache = {
       token: tokenResp.access_token,
-      expiresAt: Date.now() + (expiresIn - 60) * 1000
+      expiresAt
     };
 
     return tokenResp.access_token;

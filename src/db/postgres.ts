@@ -222,11 +222,17 @@ export class PostgresConnector extends DatabaseConnector {
       let effectiveDataType = rawType;
       let isArray = false;
       let arrayItemType: string | undefined;
+      let arrayDimensions = 0;
       let enumValues: EnumValue[] | undefined;
 
       if (rawType === 'ARRAY') {
         isArray = true;
-        const itemUdt = udt.replace(/^_/, '').toLowerCase();
+        let itemUdt = udt;
+        while (itemUdt.startsWith('_')) {
+          arrayDimensions++;
+          itemUdt = itemUdt.substring(1);
+        }
+        itemUdt = itemUdt.toLowerCase();
 
         if (POSTGRES_ADVANCED_TYPES[itemUdt]) {
           arrayItemType = POSTGRES_ADVANCED_TYPES[itemUdt];
@@ -243,7 +249,8 @@ export class PostgresConnector extends DatabaseConnector {
           arrayItemType = `${arrayItemType}(${col.character_maximum_length})`;
         }
 
-        effectiveDataType = `${arrayItemType}[]`;
+        const brackets = '[]'.repeat(arrayDimensions);
+        effectiveDataType = `${arrayItemType}${brackets}`;
       } else if (POSTGRES_ADVANCED_TYPES[udt]) {
         effectiveDataType = POSTGRES_ADVANCED_TYPES[udt];
       } else if (rawType === 'USER-DEFINED' && this.enumCache.has(udt)) {
@@ -306,6 +313,7 @@ export class PostgresConnector extends DatabaseConnector {
         constraints,
         isArray,
         arrayItemType,
+        arrayDimensions: isArray ? arrayDimensions : undefined,
         enumValues
       };
 
