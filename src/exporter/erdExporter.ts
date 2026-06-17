@@ -52,19 +52,17 @@ export abstract class GraphvizErdExporter extends Exporter {
       let dotBin = 'dot';
       if (process.platform === 'win32') dotBin = 'dot.exe';
 
-      const readmeRef =
-        process.platform === 'darwin'
-          ? '  macOS:   brew install graphviz\n' +
-            '            Or: https://graphviz.org/download/#mac'
-          : process.platform === 'linux'
-          ? '  Ubuntu/Debian:  sudo apt install -y graphviz\n' +
-            '  RHEL/CentOS:   sudo yum install -y graphviz\n' +
-            '  Arch:          sudo pacman -S graphviz'
-          : process.platform === 'win32'
-          ? '  Windows (choco):  choco install graphviz\n' +
-            '  Windows (winget): winget install Graphviz.Graphviz\n' +
-            '  Official installer: https://graphviz.org/download/#windows'
-          : '  See https://graphviz.org/download/';
+      const readmeRef = [
+        '  [1] macOS (Homebrew):    brew install graphviz',
+        '  [2] Ubuntu/Debian:       sudo apt install -y graphviz',
+        '  [3] RHEL/CentOS:         sudo yum install -y graphviz',
+        '  [4] Windows (Chocolatey):choco install graphviz',
+        '',
+        '  Other package managers:',
+        '  - Arch:          sudo pacman -S graphviz',
+        '  - Windows:       winget install Graphviz.Graphviz',
+        '  - Official:      https://graphviz.org/download/'
+      ].join('\n');
 
       const proc = child_process.spawn(dotBin, [`-T${format}`], {
         stdio: ['pipe', 'pipe', 'pipe']

@@ -105,6 +105,7 @@ export interface ConfluenceAuthOAuth2 {
   clientSecret: string;
   tokenEndpoint: string;
   scope?: string;
+  refreshIntervalMinutes?: number;
   refreshIntervalSeconds?: number;
   minTtlSeconds?: number;
 }

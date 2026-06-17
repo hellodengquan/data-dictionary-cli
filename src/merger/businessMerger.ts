@@ -118,8 +118,16 @@ export class BusinessMerger {
     );
 
     let expiresIn = tokenResp.expires_in ?? 3600;
-    if (auth.refreshIntervalSeconds && auth.refreshIntervalSeconds > 0) {
-      expiresIn = Math.min(expiresIn, auth.refreshIntervalSeconds);
+    let effectiveRefreshSeconds: number | undefined;
+
+    if (auth.refreshIntervalMinutes !== undefined && auth.refreshIntervalMinutes > 0) {
+      effectiveRefreshSeconds = Math.max(1, Math.floor(auth.refreshIntervalMinutes * 60));
+    } else if (auth.refreshIntervalSeconds !== undefined && auth.refreshIntervalSeconds > 0) {
+      effectiveRefreshSeconds = auth.refreshIntervalSeconds;
+    }
+
+    if (effectiveRefreshSeconds !== undefined) {
+      expiresIn = Math.min(expiresIn, effectiveRefreshSeconds);
     }
 
     const bufferSeconds = Math.min(minTtlSeconds, Math.floor(expiresIn / 2));

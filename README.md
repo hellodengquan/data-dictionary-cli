@@ -85,8 +85,15 @@ datadict generate \
 | `--tables "*"` 又 `--exclude-tables "logs"` （精确匹配 vs 模糊混用） | `--exclude-tables` 一样支持通配符，写 `"logs"` **只能精确匹配 logs**，`users_logs` 躲过去 | 大量相关表没被排除，结果仍然巨大 | `--exclude-tables "logs,*_logs,*_log"` |
 | `--schemas "public,App_*"` （大小写敏感） | Postgres 中 unquoted identifier 都是小写，schema/table 名通常全小写 | `"App_*"` 匹配不到 `app_user` | 全部写**小写**：`"public,app_*"` |
 | bash 中写 `--tables *` 不加引号 | shell 会把 `*` 展开为当前目录下的文件名列表 | 参数错乱、报错找不到某个奇怪的表名 | 一定要**双引号包裹**：`--tables "*"` |
+| `--schemas "/data/db/core/app_*"` （绝对路径起头） | schema 名只是个名字，不是文件路径，没有 `/` 前缀 | 永远匹配不到 | 直接写名字：`"core,app_*"` |
+| `--tables "prod/sales/orders"` （路径式中间斜杠） | schema 与表名是分开配置的，不是文件路径，不要用 `/` 串联 | 永远匹配不到 | `--schemas "prod,sales" --tables "orders"` |
+| `--schemas "app.legacy,app.core"` （用 `.` 分隔） | `--schemas` 只传 schema 名，不要带表名，`.` 不是分隔符 | schema 名不存在、匹配为 0 | `"app_legacy,app_core"`，表名放 `--tables` |
+| `--tables "users;orders;items"` （分号分隔） | 只有逗号 `,` 是分隔符，分号会被 shell 截断 | 后面参数全被当 shell 命令执行（危险！） | 只能用逗号：`"users,orders,items"` |
+| `--schemas "app_*\|!*test*"` （用 `\|` 当或） | 不支持正则 `\|`，`\|` 会被当成普通字符；且 shell 里 `\|` 有特殊含义 | 匹配不到、甚至管道截断 | 直接写逗号串联：`"app_*,!*test*"` |
 
 > 记忆口诀：**逗号后无空格、字符串加引号、schema/table 全部小写、`!` 只出现在包含列表（--schemas / --tables）里，exclude 列表不要再双重否定。**
+>
+> 额外避坑三禁令：**禁绝对路径、禁中间斜杠、禁分号竖线。**
 
 ---
 
@@ -101,7 +108,7 @@ datadict generate \
 | 时间/金额  | `timestamptz`、`timetz`、`interval`、`money`                                   |
 | 几何/二进制| `bytea`、`point`、`geometry`                                                   |
 | 枚举       | 任意 `CREATE TYPE ... AS ENUM`（**枚举值会显示在字段"说明"下，带序号**）        |
-| 数组       | 任意基础类型加 `[]`，例：`integer[]`、`text[]`、`uuid[]`、`varchar(64)[]`       |
+| 数组       | 任意维度，例：`integer[]`、`text[]`、`uuid[]`、`varchar(64)[]`、`INTEGER[][]`、`JSONB[][][]`、`ENUM[]`（递归支持 3 层及以上） |
 
 ---
 
@@ -133,14 +140,15 @@ datadict generate \
   "clientSecret": "xxxxx",
   "tokenEndpoint": "https://confluence.example.com/oauth/token",
   "scope": "READ",
-  "refreshIntervalSeconds": 300,
-  "minTtlSeconds": 60
+  "refreshIntervalMinutes": 2.5,
+  "minTtlSeconds": 30
 }
 ```
 
 > - PAT 快过期时 `datadict generate` 会在 stderr 打印黄色警告，明确剩余天数。
 > - OAuth2 每次运行自动向 tokenEndpoint 申请新 token，无需手动更换。
->   - `refreshIntervalSeconds`：企业 SSO 短寿命 token 可配置刷新间隔（例：5分钟=300），默认使用服务端返回的 `expires_in`
+>   - `refreshIntervalMinutes`：企业 SSO 短寿命 token 可配置刷新间隔，支持分钟级浮点（例：2.5 = 150 秒）
+>   - `refreshIntervalSeconds`：秒级整数配置，与 minutes 同时配置时 minutes 优先
 >   - `minTtlSeconds`：剩余有效期小于该秒数时强制刷新，默认 60 秒
 
 ### 3.2 两种拉取策略
@@ -178,20 +186,19 @@ datadict generate \
 
 ### Graphviz 安装说明（ERD 图依赖）
 
-`-f erd-svg` 和 `-f erd-png` 会调用系统 `dot`（Graphviz）命令，若未安装会友好报错并指向本节。请按平台安装：
+`-f erd-svg` 和 `-f erd-png` 会调用系统 `dot`（Graphviz）命令，若未安装会友好报错并指向本节，四大主包管理器一键安装：
 
-| 平台 | 安装命令 |
-|------|----------|
-| macOS（推荐） | `brew install graphviz` |
-| macOS（官方 dmg） | <https://graphviz.org/download/#mac> |
-| Ubuntu / Debian | `sudo apt install -y graphviz` |
-| RHEL / CentOS | `sudo yum install -y graphviz` |
-| Arch / Manjaro | `sudo pacman -S graphviz` |
-| Windows（Chocolatey） | `choco install graphviz` |
-| Windows（Winget） | `winget install Graphviz.Graphviz` |
-| Windows（官方包） | <https://graphviz.org/download/#windows> |
+| 序号 | 平台 / 包管理器 | 安装命令 |
+|------|-----------------|----------|
+| 1 | macOS（Homebrew / 🍺 brew） | `brew install graphviz` |
+| 2 | Ubuntu / Debian（apt） | `sudo apt install -y graphviz` |
+| 3 | RHEL / CentOS（yum / dnf） | `sudo yum install -y graphviz` |
+| 4 | Windows（Chocolatey / 🍫 choco） | `choco install graphviz` |
+| - | Arch / Manjaro | `sudo pacman -S graphviz` |
+| - | Windows（Winget） | `winget install Graphviz.Graphviz` |
+| - | 官方安装包（全平台） | <https://graphviz.org/download/> |
 
-验证：`dot -V` 能输出版本号即可。
+验证：`dot -V` 能输出版本号（≥ 2.40）即可。
 
 ---
 
@@ -215,6 +222,23 @@ HTML 里 `生成时间` 等日期按 `--lang` 和 `--timezone` 双因子调用 `
 | `Europe/Berlin` | 中欧时间 |
 
 > `--timezone` 未指定时，会自动通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 探测本机时区，页脚会附带 `[IANA (UTC±hh:mm)]` 标签便于审计。
+
+### `--lang` 与 `--timezone` 优先级 & 组合规则
+
+两者**不会冲突**，作用域完全正交：
+
+| 参数 | 作用域 | 取值示例 | 影响点 |
+|------|--------|----------|--------|
+| `--lang` | 显示格式 | `zh` / `en` | locale（zh-CN / en-US）、小时制（zh=24h / en=12h）、i18n 文案 |
+| `--timezone` | 时间值本身 | `Asia/Shanghai` / `UTC` / `America/New_York` | 时间做 UTC 偏移，同一时刻在不同时区显示为不同的钟表时间 |
+
+**典型组合**：
+- `--lang zh --timezone Asia/Shanghai` → `2026/06/17 14:30:00 [Asia/Shanghai (UTC+08:00)]`
+- `--lang zh --timezone UTC` → `2026/06/17 06:30:00 [UTC (UTC+00:00)]`（同一时刻，显示为 UTC）
+- `--lang en --timezone Asia/Shanghai` → `6/17/2026, 2:30:00 PM [Asia/Shanghai (UTC+08:00)]`（英文 12h 制 + 中文时区）
+- `--lang en --timezone America/New_York` → `6/17/2026, 2:30:00 AM [America/New_York (UTC-04:00)]`
+
+> 优先级：**显式参数 > 自动探测 > 默认值**。若同时传 `--timezone` 和运行环境的 `TZ` 环境变量，优先用 `--timezone`。
 
 ---
 
