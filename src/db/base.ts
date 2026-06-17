@@ -1,28 +1,75 @@
 import { DatabaseConfig, TableInfo, DatabaseMetadata, ScanConfig } from '../types';
+import { parsePatternList, matchParsedPatterns, detectWildcards } from '../utils/pattern';
+
+export interface TableWithSchema {
+  name: string;
+  schema: string;
+}
 
 export abstract class DatabaseConnector {
   protected config: DatabaseConfig;
+  protected defaultSchema = 'public';
 
   constructor(config: DatabaseConfig) {
     this.config = config;
+    if (config.type === 'sqlite') {
+      this.defaultSchema = 'main';
+    }
   }
 
   abstract connect(): Promise<void>;
   abstract disconnect(): Promise<void>;
-  abstract getTables(scanConfig?: ScanConfig): Promise<string[]>;
+
+  abstract getAllSchemas(): Promise<string[]>;
+
+  abstract listTablesInSchemas(schemas: string[], includeViews?: boolean): Promise<TableWithSchema[]>;
+
   abstract getTableInfo(tableName: string, schema?: string): Promise<TableInfo>;
+
   abstract getDatabaseVersion(): Promise<string>;
   abstract getDatabaseName(): Promise<string>;
+
+  async resolveSchemas(scanConfig?: ScanConfig): Promise<string[]> {
+    const rawSchemas = scanConfig?.schemas && scanConfig.schemas.length > 0
+      ? scanConfig.schemas
+      : [this.defaultSchema];
+
+    const hasWildcards = detectWildcards(rawSchemas);
+
+    if (!hasWildcards) {
+      return rawSchemas.filter(s => !s.startsWith('!'));
+    }
+
+    const allSchemas = await this.getAllSchemas();
+    const patterns = parsePatternList(rawSchemas);
+
+    return allSchemas
+      .filter(s => matchParsedPatterns(s, patterns))
+      .sort();
+  }
 
   async scanDatabase(scanConfig?: ScanConfig): Promise<DatabaseMetadata> {
     await this.connect();
 
     try {
-      const tables = await this.getTables(scanConfig);
-      const tableInfos: TableInfo[] = [];
+      const resolvedSchemas = await this.resolveSchemas(scanConfig);
+      const includeViews = scanConfig?.includeViews ?? false;
 
-      for (const tableName of tables) {
-        const tableInfo = await this.getTableInfo(tableName, scanConfig?.schemas?.[0]);
+      const allTables = await this.listTablesInSchemas(resolvedSchemas, includeViews);
+
+      const filteredTables = allTables.filter(ts => {
+        if (!this.shouldIncludeTable(ts.name, scanConfig)) {
+          return false;
+        }
+        return true;
+      });
+
+      const tableInfos: TableInfo[] = [];
+      for (const ts of filteredTables) {
+        const tableInfo = await this.getTableInfo(ts.name, ts.schema);
+        if (!tableInfo.schema) {
+          tableInfo.schema = ts.schema;
+        }
         tableInfos.push(tableInfo);
       }
 
@@ -46,11 +93,17 @@ export abstract class DatabaseConnector {
     }
 
     if (scanConfig.tables && scanConfig.tables.length > 0) {
-      return scanConfig.tables.some(t => t === tableName || t.toLowerCase() === tableName.toLowerCase());
+      const patterns = parsePatternList(scanConfig.tables);
+      if (!matchParsedPatterns(tableName, patterns)) {
+        return false;
+      }
     }
 
     if (scanConfig.excludeTables && scanConfig.excludeTables.length > 0) {
-      return !scanConfig.excludeTables.some(t => t === tableName || t.toLowerCase() === tableName.toLowerCase());
+      const patterns = parsePatternList(scanConfig.excludeTables.map(t => t.startsWith('!') ? t : '!' + t));
+      if (!matchParsedPatterns(tableName, patterns)) {
+        return false;
+      }
     }
 
     return true;

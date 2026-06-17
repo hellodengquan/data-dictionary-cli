@@ -1,6 +1,23 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { DatabaseMetadata, BusinessConfig, BusinessDescription, TableInfo, ColumnInfo } from '../types';
+import * as https from 'https';
+import * as http from 'http';
+import { URL } from 'url';
+import { DatabaseMetadata, BusinessConfig, BusinessDescription, TableInfo, ColumnInfo, ConfluenceConfig } from '../types';
+
+const DEFAULT_TABLE_HEADER = {
+  table: ['表名', 'TableName', 'table_name', 'name'],
+  tableDesc: ['说明', '业务说明', 'Description', 'description', 'desc'],
+  column: ['字段', '字段名', 'Column', 'column_name', 'name', 'Field'],
+  columnDesc: ['说明', '业务说明', '描述', 'Description', 'description', 'comment']
+};
+
+interface ConfluencePage {
+  id: string;
+  title: string;
+  body?: { storage?: { value?: string } };
+  children?: { page?: { results?: ConfluencePage[] } };
+}
 
 export class BusinessMerger {
   private businessConfig: BusinessConfig;
@@ -13,9 +30,236 @@ export class BusinessMerger {
     }
   }
 
+  async loadRemote(): Promise<void> {
+    if (this.businessConfig.confluence) {
+      const remote = await this.loadFromConfluence(this.businessConfig.confluence);
+      this.mergeRemoteIntoLocal(remote);
+    }
+  }
+
+  private mergeRemoteIntoLocal(remote: BusinessDescription[]): void {
+    if (!remote.length) return;
+    const existing = new Map<string, BusinessDescription>();
+    for (const t of this.businessConfig.tables || []) {
+      existing.set(t.tableName.toLowerCase(), t);
+    }
+    for (const r of remote) {
+      const key = r.tableName.toLowerCase();
+      const local = existing.get(key);
+      if (local) {
+        local.description = r.description || local.description;
+        local.columns = { ...(r.columns || {}), ...(local.columns || {}) };
+      } else {
+        existing.set(key, r);
+      }
+    }
+    this.businessConfig.tables = Array.from(existing.values());
+  }
+
+  private async loadFromConfluence(cfg: ConfluenceConfig): Promise<BusinessDescription[]> {
+    const base = cfg.baseUrl.replace(/\/+$/, '');
+    const apiPrefix = base.includes('/wiki/') ? '' : '/wiki';
+    const auth = cfg.user
+      ? 'Basic ' + Buffer.from(`${cfg.user}:${cfg.apiToken}`).toString('base64')
+      : 'Bearer ' + cfg.apiToken;
+
+    const httpReq = <T>(urlStr: string): Promise<T> => new Promise((resolve, reject) => {
+      const u = new URL(urlStr);
+      const lib = u.protocol === 'https:' ? https : http;
+      const req = lib.request({
+        hostname: u.hostname,
+        port: u.port || undefined,
+        path: u.pathname + u.search,
+        method: 'GET',
+        headers: {
+          'Authorization': auth,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'data-dictionary-cli/1.0'
+        }
+      }, (res) => {
+        if ((res.statusCode || 0) >= 400) {
+          reject(new Error(`Confluence API error: ${res.statusCode} ${res.statusMessage} (${urlStr})`));
+          return;
+        }
+        let body = '';
+        res.on('data', (chunk) => { body += chunk.toString(); });
+        res.on('end', () => {
+          try { resolve(JSON.parse(body) as T); } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+
+    let targetPage: ConfluencePage | undefined;
+
+    if (cfg.pageId) {
+      targetPage = await httpReq<ConfluencePage>(
+        `${base}${apiPrefix}/rest/api/content/${cfg.pageId}?expand=body.storage,children.page`
+      );
+    } else if (cfg.spaceKey && cfg.pageTitlePattern) {
+      const searchTitle = cfg.pageTitlePattern.replace(/\*/g, '');
+      const searchRes = await httpReq<any>(
+        `${base}${apiPrefix}/rest/api/content?type=page&spaceKey=${cfg.spaceKey}&title=${encodeURIComponent(searchTitle)}&expand=body.storage,children.page&limit=50`
+      );
+      const pages: ConfluencePage[] = searchRes.results || [];
+      const regex = new RegExp('^' + cfg.pageTitlePattern.replace(/\*/g, '.*') + '$');
+      targetPage = pages.find(p => regex.test(p.title)) || pages[0];
+      if (targetPage) {
+        targetPage = await httpReq<ConfluencePage>(
+          `${base}${apiPrefix}/rest/api/content/${targetPage.id}?expand=body.storage,children.page`
+        );
+      }
+    } else if (cfg.spaceKey) {
+      const list = await httpReq<any>(
+        `${base}${apiPrefix}/rest/api/content?type=page&spaceKey=${cfg.spaceKey}&expand=body.storage,children.page&limit=100`
+      );
+      targetPage = { id: 'root', title: cfg.spaceKey, children: { page: { results: list.results || [] } } };
+    }
+
+    if (!targetPage) {
+      return [];
+    }
+
+    const allPages: ConfluencePage[] = [targetPage];
+    const collectChildren = (p: ConfluencePage) => {
+      const kids = p.children?.page?.results || [];
+      for (const c of kids) {
+        allPages.push(c);
+        collectChildren(c);
+      }
+    };
+    collectChildren(targetPage);
+
+    const allDesc: BusinessDescription[] = [];
+
+    for (const page of allPages) {
+      const html = page.body?.storage?.value || '';
+      if (!html) continue;
+      const tables = this.extractTablesFromConfluenceHtml(html);
+      const parsed = this.parseTablesToBusiness(tables, cfg, page.title);
+      allDesc.push(...parsed);
+    }
+
+    return allDesc;
+  }
+
+  private extractTablesFromConfluenceHtml(html: string): string[][][] {
+    const tables: string[][][] = [];
+    const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    const cellRegex = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi;
+
+    let tMatch: RegExpExecArray | null;
+    while ((tMatch = tableRegex.exec(html)) !== null) {
+      const tableHtml = tMatch[1];
+      const rows: string[][] = [];
+      let rMatch: RegExpExecArray | null;
+      while ((rMatch = rowRegex.exec(tableHtml)) !== null) {
+        const rowHtml = rMatch[1];
+        const cells: string[] = [];
+        let cMatch: RegExpExecArray | null;
+        while ((cMatch = cellRegex.exec(rowHtml)) !== null) {
+          let text = cMatch[1]
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .trim();
+          cells.push(text);
+        }
+        if (cells.length) rows.push(cells);
+      }
+      if (rows.length) tables.push(rows);
+    }
+
+    return tables;
+  }
+
+  private headerIndex(row: string[], candidates: string[]): number {
+    const lower = row.map(c => c.trim().toLowerCase());
+    for (let i = 0; i < lower.length; i++) {
+      if (candidates.some(c => c.toLowerCase() === lower[i] || lower[i].includes(c.toLowerCase()))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private parseTablesToBusiness(tables: string[][][], cfg: ConfluenceConfig, pageHint: string): BusinessDescription[] {
+    const result: BusinessDescription[] = [];
+    const headerCfg = cfg.tableHeaderRowPattern || { table: DEFAULT_TABLE_HEADER.table, column: DEFAULT_TABLE_HEADER.column };
+    const tableDescHeaders = headerCfg.table.slice();
+    const columnDescHeaders = [...DEFAULT_TABLE_HEADER.columnDesc];
+
+    const pending: BusinessDescription | null = null;
+
+    for (const table of tables) {
+      if (table.length < 2) continue;
+      const header = table[0];
+      const tNameIdx = this.headerIndex(header, headerCfg.table);
+      const tDescIdx = this.headerIndex(header, tableDescHeaders.concat(DEFAULT_TABLE_HEADER.tableDesc));
+      const cNameIdx = this.headerIndex(header, headerCfg.column.concat(DEFAULT_TABLE_HEADER.column));
+      const cDescIdx = this.headerIndex(header, columnDescHeaders);
+
+      if (tNameIdx >= 0 && table[0].length <= 4) {
+        for (let i = 1; i < table.length; i++) {
+          const name = table[i][tNameIdx];
+          if (!name) continue;
+          const desc = tDescIdx >= 0 ? (table[i][tDescIdx] || '') : '';
+          const cleanedName = name.replace(/[`'"【\]]/g, '').trim();
+          const existing = result.find(r => r.tableName.toLowerCase() === cleanedName.toLowerCase());
+          if (existing) {
+            existing.description = existing.description || desc;
+          } else {
+            result.push({ tableName: cleanedName, description: desc, columns: {} });
+          }
+        }
+      } else if (cNameIdx >= 0 && cDescIdx >= 0) {
+        let target: BusinessDescription | undefined;
+
+        const matchInPageName = result.find(r => pageHint.includes(r.tableName) || r.tableName.includes(pageHint.replace(/\s+/g, '')));
+        if (matchInPageName) {
+          target = matchInPageName;
+        } else if (result.length > 0) {
+          target = result[result.length - 1];
+        } else {
+          const nameFromTitle = pageHint.replace(/数据字典|表结构|Data\s*Dictionary|Table\s*Structure/gi, '').trim();
+          if (nameFromTitle) {
+            target = { tableName: nameFromTitle, columns: {} };
+            result.push(target);
+          }
+        }
+
+        if (!target) {
+          target = pending as any;
+        }
+
+        if (target) {
+          if (!target.columns) target.columns = {};
+          for (let i = 1; i < table.length; i++) {
+            const cname = table[i][cNameIdx];
+            const cdesc = table[i][cDescIdx];
+            if (!cname) continue;
+            const cleanCname = cname.replace(/[`'"]/g, '').trim();
+            if (cdesc) {
+              target.columns[cleanCname] = cdesc;
+            }
+          }
+        }
+      }
+    }
+
+    return result.filter(b => b.description || (b.columns && Object.keys(b.columns).length > 0));
+  }
+
   private loadBusinessConfig(configPath: string): BusinessConfig {
     const resolvedPath = path.resolve(configPath);
-    
+
     if (!fs.existsSync(resolvedPath)) {
       throw new Error(`Business config file not found: ${resolvedPath}`);
     }
@@ -28,37 +272,29 @@ export class BusinessMerger {
     } else if (ext === '.yaml' || ext === '.yml') {
       return this.parseYaml(content);
     } else if (ext === '.js') {
+      delete require.cache[require.resolve(resolvedPath)];
       return require(resolvedPath);
     }
 
-    try {
-      return JSON.parse(content);
-    } catch {
-      try {
-        return this.parseYaml(content);
-      } catch {
-        throw new Error(`Unsupported business config format: ${ext}. Supported formats: .json, .yaml, .yml, .js`);
-      }
+    try { return JSON.parse(content); } catch { /* ignore */ }
+    try { return this.parseYaml(content); } catch {
+      throw new Error(`Unsupported business config format: ${ext}. Supported formats: .json, .yaml, .yml, .js`);
     }
   }
 
   private parseYaml(content: string): BusinessConfig {
     const lines = content.split('\n');
     const result: any = {};
-    const stack: any[] = [];
+    const stack: { obj: any; indent: number }[] = [];
     let currentObj: any = result;
     let currentIndent = -1;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const trimmed = line.trim();
-      
-      if (!trimmed || trimmed.startsWith('#')) {
-        continue;
-      }
+      if (!trimmed || trimmed.startsWith('#')) continue;
 
       const indent = line.search(/\S/);
-      
       if (indent > currentIndent) {
         stack.push({ obj: currentObj, indent: currentIndent });
         currentIndent = indent;
@@ -71,12 +307,10 @@ export class BusinessMerger {
       }
 
       const colonIndex = trimmed.indexOf(':');
-      if (colonIndex === -1) {
-        continue;
-      }
+      if (colonIndex === -1) continue;
 
       const key = trimmed.substring(0, colonIndex).trim().replace(/^["']|["']$/g, '');
-      let value = trimmed.substring(colonIndex + 1).trim();
+      let value: any = trimmed.substring(colonIndex + 1).trim();
 
       if (value === '' || value === '|' || value === '>') {
         const textLines: string[] = [];
@@ -84,66 +318,51 @@ export class BusinessMerger {
         i++;
         while (i < lines.length) {
           const textLine = lines[i];
-          if (!textLine.trim()) {
-            textLines.push('');
-            i++;
-            continue;
-          }
-          const textLineIndent = textLine.search(/\S/);
-          if (textLineIndent < textIndent) {
-            i--;
-            break;
-          }
+          if (!textLine.trim()) { textLines.push(''); i++; continue; }
+          const tli = textLine.search(/\S/);
+          if (tli < textIndent) { i--; break; }
           textLines.push(textLine.substring(textIndent));
           i++;
         }
         value = textLines.join('\n');
       } else if (value.startsWith('[') && value.endsWith(']')) {
-        try {
-          value = JSON.parse(value);
-        } catch {
-          value = value.substring(1, value.length - 1).split(',').map(v => v.trim());
+        try { value = JSON.parse(value); } catch {
+          value = value.substring(1, value.length - 1).split(',').map((v: string) => v.trim().replace(/^["']|["']$/g, ''));
         }
       } else if (value.startsWith('{') && value.endsWith('}')) {
-        try {
-          value = JSON.parse(value);
-        } catch {
-        }
+        try { value = JSON.parse(value); } catch { /* ignore */ }
       } else if (value.startsWith('"') && value.endsWith('"')) {
         value = value.substring(1, value.length - 1);
       } else if (value.startsWith("'") && value.endsWith("'")) {
         value = value.substring(1, value.length - 1);
-      } else if (value === 'true') {
-        value = true;
-      } else if (value === 'false') {
-        value = false;
-      } else if (value === 'null') {
-        value = null;
-      } else if (!isNaN(Number(value)) && value !== '') {
-        value = Number(value);
-      }
+      } else if (value === 'true') { value = true; }
+      else if (value === 'false') { value = false; }
+      else if (value === 'null') { value = null; }
+      else if (value !== '' && !isNaN(Number(value))) { value = Number(value); }
 
-      if (currentObj) {
-        if (key === '-') {
-          if (!Array.isArray(currentObj)) {
-            const parent = stack[stack.length - 1]?.obj || result;
-            const parentKeys = Object.keys(parent);
-            const lastKey = parentKeys[parentKeys.length - 1];
-            if (!Array.isArray(parent[lastKey])) {
-              parent[lastKey] = [];
-            }
-            parent[lastKey].push(value);
-          } else {
-            currentObj.push(value);
-          }
+      if (key === '-') {
+        const parent = stack[stack.length - 1]?.obj;
+        const pkeys = Object.keys(parent || result);
+        const lk = pkeys[pkeys.length - 1];
+        const container = (parent && lk) ? parent : result;
+        const containerKey = lk || 'items';
+        if (!Array.isArray(container[containerKey])) container[containerKey] = [];
+        if (typeof value === 'string' && ['', '|', '>'].includes(value)) {
+          container[containerKey].push({});
+          stack.push({ obj: currentObj, indent: currentIndent });
+          currentObj = container[containerKey][container[containerKey].length - 1];
+          currentIndent = indent + 2;
+        } else {
+          container[containerKey].push(value);
+        }
+      } else {
+        if (typeof value === 'string' && ['', '|', '>'].includes(value)) {
+          currentObj[key] = {};
+          stack.push({ obj: currentObj, indent: currentIndent });
+          currentObj = currentObj[key];
+          currentIndent = indent + 2;
         } else {
           currentObj[key] = value;
-          if (typeof value === 'string' && (value === '' || value === '|' || value === '>')) {
-            currentObj[key] = {};
-            stack.push({ obj: currentObj, indent: currentIndent });
-            currentObj = currentObj[key];
-            currentIndent = indent + 2;
-          }
         }
       }
     }
@@ -152,75 +371,40 @@ export class BusinessMerger {
   }
 
   merge(metadata: DatabaseMetadata): DatabaseMetadata {
-    const mergedTables = metadata.tables.map(table => 
-      this.mergeTableBusinessInfo(table)
-    );
-
     return {
       ...metadata,
-      tables: mergedTables
+      tables: metadata.tables.map(t => this.mergeTableBusinessInfo(t))
     };
   }
 
   private mergeTableBusinessInfo(table: TableInfo): TableInfo {
-    const tableBusinessInfo = this.findTableBusinessInfo(table.name);
-    
-    if (!tableBusinessInfo) {
-      return table;
-    }
-
-    const mergedColumns = table.columns.map(column => 
-      this.mergeColumnBusinessInfo(column, tableBusinessInfo)
-    );
+    const bi = this.findTableBusinessInfo(table.name);
+    if (!bi) return table;
 
     return {
       ...table,
-      columns: mergedColumns,
-      businessDescription: tableBusinessInfo.description || table.businessDescription
+      columns: table.columns.map(c => this.mergeColumnBusinessInfo(c, bi)),
+      businessDescription: bi.description || table.businessDescription
     };
   }
 
-  private mergeColumnBusinessInfo(column: ColumnInfo, tableBusinessInfo: BusinessDescription): ColumnInfo {
-    const columnDescription = tableBusinessInfo.columns?.[column.name];
-    
-    if (!columnDescription) {
-      return column;
-    }
-
-    return {
-      ...column,
-      businessDescription: columnDescription
-    };
+  private mergeColumnBusinessInfo(column: ColumnInfo, bi: BusinessDescription): ColumnInfo {
+    const desc = bi.columns?.[column.name];
+    if (!desc) return column;
+    return { ...column, businessDescription: desc };
   }
 
   private findTableBusinessInfo(tableName: string): BusinessDescription | undefined {
-    if (!this.businessConfig.tables) {
-      return undefined;
-    }
-
-    return this.businessConfig.tables.find(t => 
-      t.tableName === tableName || 
-      t.tableName.toLowerCase() === tableName.toLowerCase()
+    if (!this.businessConfig.tables) return undefined;
+    const lower = tableName.toLowerCase();
+    return this.businessConfig.tables.find(t =>
+      t.tableName === tableName || t.tableName.toLowerCase() === lower
     );
   }
 
-  getBusinessConfig(): BusinessConfig {
-    return this.businessConfig;
-  }
-
-  getTitle(): string | undefined {
-    return this.businessConfig.title;
-  }
-
-  getDescription(): string | undefined {
-    return this.businessConfig.description;
-  }
-
-  getVersion(): string | undefined {
-    return this.businessConfig.version;
-  }
-
-  getGeneratedBy(): string | undefined {
-    return this.businessConfig.generatedBy;
-  }
+  getBusinessConfig(): BusinessConfig { return this.businessConfig; }
+  getTitle(): string | undefined { return this.businessConfig.title; }
+  getDescription(): string | undefined { return this.businessConfig.description; }
+  getVersion(): string | undefined { return this.businessConfig.version; }
+  getGeneratedBy(): string | undefined { return this.businessConfig.generatedBy; }
 }

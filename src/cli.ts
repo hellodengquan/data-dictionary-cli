@@ -28,23 +28,30 @@ program
   .requiredOption('-t, --type <type>', '数据库类型: sqlite 或 postgres')
   .requiredOption('-c, --connection <connection>', '数据库连接字符串或文件路径')
   .option('-o, --output <path>', '输出文件路径', 'dictionary.html')
-  .option('-f, --format <format>', '输出格式: html, markdown, json', 'html')
+  .option('-f, --format <format>', '输出格式: html, markdown, json, erd-svg, erd-png', 'html')
   .option('--host <host>', '数据库主机地址', 'localhost')
   .option('--port <port>', '数据库端口', '5432')
   .option('--database <database>', '数据库名称')
   .option('--user <user>', '数据库用户名')
   .option('--password <password>', '数据库密码')
-  .option('--tables <tables>', '指定要扫描的表，用逗号分隔')
-  .option('--exclude-tables <tables>', '指定要排除的表，用逗号分隔')
-  .option('--schemas <schemas>', '指定要扫描的 schema，用逗号分隔', 'public')
+  .option('--tables <tables>', '指定要扫描的表，用逗号分隔，支持通配符和排除列表(!前缀)')
+  .option('--exclude-tables <tables>', '指定要排除的表，用逗号分隔，支持通配符')
+  .option('--schemas <schemas>', '指定要扫描的 schema，用逗号分隔，支持通配符(*,?)和排除列表(!前缀)。示例: app_*,!app_legacy', 'public')
   .option('--include-views', '是否包含视图', false)
   .option('--title <title>', '文档标题')
   .option('--no-toc', '不生成目录')
   .option('--no-fk', '不显示外键信息')
   .option('--no-index', '不显示索引信息')
+  .option('--lang <lang>', '文档语言: zh(中文) 或 en(英文)', 'zh')
   .option('--theme <theme>', 'HTML 主题: light 或 dark', 'light')
   .option('--template <path>', '自定义 EJS 模板路径')
   .option('--business-config <path>', '业务说明配置文件路径')
+  .option('--confluence-api-url <url>', 'Confluence API 基础地址，例如 https://confluence.example.com/rest/api')
+  .option('--confluence-username <user>', 'Confluence 用户名 (Basic Auth)')
+  .option('--confluence-token <token>', 'Confluence API Token 或 Personal Access Token (Bearer)')
+  .option('--confluence-password <pass>', 'Confluence 密码 (与用户名配合使用 Basic Auth)')
+  .option('--confluence-page-id <id>', 'Confluence 页面 ID (按页拉取说明)')
+  .option('--confluence-space-key <key>', 'Confluence 空间 Key (按空间搜索页面)')
   .option('--config <path>', '使用配置文件')
   .action(async (options) => {
     const spinner = ora('正在生成数据字典...').start();
@@ -126,11 +133,12 @@ function buildConfigFromOptions(options: any): GeneratorConfig {
     includeIndexes: options.index !== false,
     tableOfContents: options.toc !== false,
     theme: options.theme,
-    template: options.template ? path.resolve(options.template) : undefined
+    template: options.template ? path.resolve(options.template) : undefined,
+    lang: options.lang
   };
 
   let business: BusinessConfig | undefined;
-  
+
   if (options.businessConfig) {
     const businessConfigPath = path.resolve(options.businessConfig);
     if (!fs.existsSync(businessConfigPath)) {
@@ -138,6 +146,39 @@ function buildConfigFromOptions(options: any): GeneratorConfig {
     }
     const businessContent = fs.readFileSync(businessConfigPath, 'utf-8');
     business = JSON.parse(businessContent);
+  }
+
+  const hasConfluenceParams = !!(
+    options.confluenceApiUrl &&
+    (options.confluencePageId || options.confluenceSpaceKey)
+  );
+
+  if (hasConfluenceParams) {
+    if (!business) business = { tables: [] };
+    if (!business.tables) business.tables = [];
+
+    const confluence: any = {
+      apiUrl: options.confluenceApiUrl
+    };
+
+    if (options.confluenceToken) {
+      confluence.auth = { type: 'bearer', token: options.confluenceToken };
+    } else if (options.confluenceUsername) {
+      confluence.auth = {
+        type: 'basic',
+        username: options.confluenceUsername,
+        password: options.confluencePassword || ''
+      };
+    }
+
+    if (options.confluencePageId) {
+      confluence.pageId = options.confluencePageId;
+    }
+    if (options.confluenceSpaceKey) {
+      confluence.spaceKey = options.confluenceSpaceKey;
+    }
+
+    business.confluence = confluence as any;
   }
 
   return {
@@ -162,6 +203,60 @@ program
   });
 
 function createExampleConfig(dbType: string): any {
+  const commonScan = {
+    tables: [],
+    excludeTables: [],
+    schemas: [
+      'public',
+      'app_*',
+      '!app_legacy',
+      'tenant_???_core'
+    ],
+    includeViews: false,
+    _schemasComment: '支持通配符:*任意长度,?单字符; 用!开头表示排除列表; 示例: app_*,!app_legacy'
+  };
+
+  const commonOutput = {
+    format: 'html',
+    outputPath: './dictionary.html',
+    title: '示例数据字典',
+    includeForeignKeys: true,
+    includeIndexes: true,
+    tableOfContents: true,
+    theme: 'light',
+    lang: 'zh'
+  };
+
+  const commonBusiness = {
+    title: '示例数据字典',
+    description: '这是一个示例数据字典，用于展示数据字典生成工具的功能。',
+    version: '1.0.0',
+    generatedBy: '数据字典生成工具',
+    tables: [
+      {
+        tableName: 'users',
+        description: '用户表，存储系统的所有用户信息',
+        columns: {
+          id: '用户唯一标识，自增主键',
+          username: '用户名，用于登录',
+          email: '用户邮箱，用于找回密码和接收通知',
+          created_at: '记录创建时间'
+        }
+      }
+    ],
+    confluence: {
+      apiUrl: 'https://confluence.example.com/rest/api',
+      auth: {
+        type: 'bearer',
+        token: 'your-personal-access-token'
+      },
+      pageId: '12345678',
+      recursive: true,
+      titlePattern: '^\\[(?<table>[a-zA-Z0-9_]+)\\]',
+      _comment: '按 pageId 或 spaceKey 拉取 Confluence 中的说明文档，解析 HTML 表格并合并到本地业务说明'
+    }
+  };
+
   if (dbType === 'sqlite') {
     return {
       database: {
@@ -169,39 +264,9 @@ function createExampleConfig(dbType: string): any {
         connectionString: 'sqlite://./example.db',
         filename: './example.db'
       },
-      scan: {
-        tables: [],
-        excludeTables: [],
-        schemas: ['public'],
-        includeViews: false
-      },
-      output: {
-        format: 'html',
-        outputPath: './dictionary.html',
-        title: '示例数据字典',
-        includeForeignKeys: true,
-        includeIndexes: true,
-        tableOfContents: true,
-        theme: 'light'
-      },
-      business: {
-        title: '示例数据字典',
-        description: '这是一个示例数据字典，用于展示数据字典生成工具的功能。',
-        version: '1.0.0',
-        generatedBy: '数据字典生成工具',
-        tables: [
-          {
-            tableName: 'users',
-            description: '用户表，存储系统的所有用户信息',
-            columns: {
-              id: '用户唯一标识，自增主键',
-              username: '用户名，用于登录',
-              email: '用户邮箱，用于找回密码和接收通知',
-              created_at: '记录创建时间'
-            }
-          }
-        ]
-      }
+      scan: commonScan,
+      output: commonOutput,
+      business: commonBusiness
     };
   } else {
     return {
@@ -212,30 +277,12 @@ function createExampleConfig(dbType: string): any {
         port: 5432,
         database: 'dbname',
         user: 'user',
-        password: 'password'
+        password: 'password',
+        _advancedTypesComment: '自动识别 JSONB / UUID / ENUM / TIMESTAMPTZ / HSTORE / MACADDR / INET / CIDR / JSON / XML / TSVECTOR / TSQUERY / MONEY / INTERVAL / BYTEA / POINT / GEOMETRY 等 Postgres 高级类型'
       },
-      scan: {
-        tables: [],
-        excludeTables: [],
-        schemas: ['public'],
-        includeViews: false
-      },
-      output: {
-        format: 'html',
-        outputPath: './dictionary.html',
-        title: '示例数据字典',
-        includeForeignKeys: true,
-        includeIndexes: true,
-        tableOfContents: true,
-        theme: 'light'
-      },
-      business: {
-        title: '示例数据字典',
-        description: '这是一个示例数据字典，用于展示数据字典生成工具的功能。',
-        version: '1.0.0',
-        generatedBy: '数据字典生成工具',
-        tables: []
-      }
+      scan: commonScan,
+      output: commonOutput,
+      business: commonBusiness
     };
   }
 }
@@ -250,7 +297,7 @@ program
   .option('--database <database>', '数据库名称')
   .option('--user <user>', '数据库用户名')
   .option('--password <password>', '数据库密码')
-  .option('--schemas <schemas>', '指定要扫描的 schema，用逗号分隔', 'public')
+  .option('--schemas <schemas>', '指定要扫描的 schema，用逗号分隔，支持通配符和排除列表(!前缀)', 'public')
   .option('--include-views', '是否包含视图', false)
   .action(async (options) => {
     const spinner = ora('正在连接数据库...').start();

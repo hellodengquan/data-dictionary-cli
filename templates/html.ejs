@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<%= lang %>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -698,15 +698,15 @@
     </style>
 </head>
 <body data-theme="<%= theme %>">
-    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+    <button class="theme-toggle" onclick="toggleTheme()" title="<%= i18n.toggleTheme %>">
         <%= theme === 'dark' ? '☀️' : '🌙' %>
     </button>
 
-    <button class="mobile-toggle" onclick="toggleSidebar()" title="目录">
+    <button class="mobile-toggle" onclick="toggleSidebar()" title="<%= i18n.tableOfContents %>">
         📋
     </button>
 
-    <button class="back-to-top" id="backToTop" onclick="scrollToTop()" title="回到顶部">
+    <button class="back-to-top" id="backToTop" onclick="scrollToTop()" title="<%= i18n.backToTop %>">
         ↑
     </button>
 
@@ -717,7 +717,7 @@
                 <p class="subtitle"><%= helper.escapeHtml(description) %></p>
             <% } %>
             <% if (version) { %>
-                <p class="subtitle">版本: <%= helper.escapeHtml(version) %></p>
+                <p class="subtitle"><%= i18n.version %>: <%= helper.escapeHtml(version) %></p>
             <% } %>
             <div class="header-meta">
                 <div class="meta-item">
@@ -746,9 +746,9 @@
         <div class="main-content">
             <% if (includeTableOfContents) { %>
                 <aside class="sidebar" id="sidebar">
-                    <h3>📋 目录</h3>
+                    <h3><%= i18n.sidebarTitle %></h3>
                     <div class="search-box">
-                        <input type="text" id="searchInput" placeholder="搜索表名..." oninput="filterTables()">
+                        <input type="text" id="searchInput" placeholder="<%= i18n.searchTables %>" oninput="filterTables()">
                     </div>
                     <ul class="toc-list" id="tocList">
                         <% for (let i = 0; i < tables.length; i++) { %>
@@ -770,38 +770,38 @@
 
             <main class="content">
                 <section class="section">
-                    <h2 class="section-title">📊 统计信息</h2>
+                    <h2 class="section-title"><%= i18n.statistics %></h2>
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="number"><%= statistics.tableCount %></div>
-                            <div class="label">数据表</div>
+                            <div class="label"><%= i18n.tableCount %></div>
                         </div>
                         <div class="stat-card">
                             <div class="number"><%= statistics.columnCount %></div>
-                            <div class="label">字段数</div>
+                            <div class="label"><%= i18n.columnCount %></div>
                         </div>
                     </div>
                 </section>
 
                 <section class="section">
-                    <h2 class="section-title">ℹ️ 数据库信息</h2>
+                    <h2 class="section-title"><%= i18n.databaseInfo %></h2>
                     <div class="info-grid">
                         <div class="info-card">
-                            <div class="label">数据库名称</div>
+                            <div class="label"><%= i18n.dbName %></div>
                             <div class="value"><%= helper.escapeHtml(database.name) %></div>
                         </div>
                         <div class="info-card">
-                            <div class="label">数据库类型</div>
+                            <div class="label"><%= i18n.dbType %></div>
                             <div class="value"><%= helper.escapeHtml(database.type.toUpperCase()) %></div>
                         </div>
                         <% if (database.version) { %>
                             <div class="info-card">
-                                <div class="label">数据库版本</div>
+                                <div class="label"><%= i18n.dbVersion %></div>
                                 <div class="value"><%= helper.escapeHtml(database.version) %></div>
                             </div>
                         <% } %>
                         <div class="info-card">
-                            <div class="label">生成时间</div>
+                            <div class="label"><%= i18n.generateTime %></div>
                             <div class="value" style="font-size: 0.9rem;"><%= generatedAtFormatted %></div>
                         </div>
                     </div>
@@ -816,20 +816,20 @@
                                     <span class="icon">📄</span>
                                     <span><%= helper.escapeHtml(table.name) %></span>
                                     <span style="font-size: 0.75rem; color: var(--text-tertiary); font-weight: normal;">
-                                        (<%= table.columns.length %> 个字段)
+                                        (<%= table.columns.length %> <%= i18n.fieldsCount %>)
                                     </span>
                                 </div>
-                                
+
                                 <% if (table.hasDescription) { %>
                                     <p class="table-description <%= table.hasBusinessDescription ? 'business' : '' %>">
-                                        <%= table.hasBusinessDescription ? '📝 ' : '' %><%= helper.escapeHtml(table.description) %>
+                                        <%= table.hasBusinessDescription ? i18n.business : '' %><%= helper.escapeHtml(table.description) %>
                                     </p>
                                 <% } %>
 
                                 <% if (table.hasPrimaryKey) { %>
                                     <div class="table-meta">
                                         <span class="badge badge-primary">
-                                            🔑 主键: <%= helper.escapeHtml(table.primaryKeyText) %>
+                                            🔑 <%= i18n.primaryKey %>: <%= helper.escapeHtml(table.primaryKeyText) %>
                                         </span>
                                     </div>
                                 <% } %>
@@ -839,13 +839,13 @@
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th class="col-position">#</th>
-                                            <th>字段名</th>
-                                            <th>数据类型</th>
-                                            <th>可空</th>
-                                            <th>默认值</th>
-                                            <th>约束</th>
-                                            <th>说明</th>
+                                            <th class="col-position"><%= i18n.colNo %></th>
+                                            <th><%= i18n.colName %></th>
+                                            <th><%= i18n.colDataType %></th>
+                                            <th><%= i18n.colNullable %></th>
+                                            <th><%= i18n.colDefault %></th>
+                                            <th><%= i18n.colConstraints %></th>
+                                            <th><%= i18n.colDescription %></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -892,9 +892,15 @@
                                                 </td>
                                                 <td class="col-description">
                                                     <div class="description-text <%= helper.hasBusinessDescription(column) ? 'business' : '' %>">
-                                                        <%= helper.hasBusinessDescription(column) ? '📝 ' : '' %>
+                                                        <%= helper.hasBusinessDescription(column) ? i18n.business : '' %>
                                                         <%= helper.escapeHtml(helper.formatDescription(column)) || '-' %>
                                                     </div>
+                                                    <% if (column.enumValues && column.enumValues.length > 0) { %>
+                                                        <div class="enum-values" style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-tertiary);">
+                                                            <strong><%= i18n.enumValues %>:</strong>
+                                                            <%= helper.escapeHtml(helper.formatEnumValues(column)) %>
+                                                        </div>
+                                                    <% } %>
                                                 </td>
                                             </tr>
                                         <% } %>
@@ -904,17 +910,17 @@
 
                             <% if (table.hasForeignKeys) { %>
                                 <div class="sub-section">
-                                    <h4><span class="icon">🔗</span> 外键关系</h4>
+                                    <h4><%= i18n.fkRelations %></h4>
                                     <div class="table-container">
                                         <table class="relation-table">
                                             <thead>
                                                 <tr>
-                                                    <th>外键名</th>
-                                                    <th>字段</th>
-                                                    <th>关联表</th>
-                                                    <th>关联字段</th>
-                                                    <th>删除规则</th>
-                                                    <th>更新规则</th>
+                                                    <th><%= i18n.fkName %></th>
+                                                    <th><%= i18n.fkColumn %></th>
+                                                    <th><%= i18n.fkRefTable %></th>
+                                                    <th><%= i18n.fkRefColumn %></th>
+                                                    <th><%= i18n.fkDeleteRule %></th>
+                                                    <th><%= i18n.fkUpdateRule %></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -941,15 +947,15 @@
 
                             <% if (table.hasIndexes) { %>
                                 <div class="sub-section">
-                                    <h4><span class="icon">📇</span> 索引</h4>
+                                    <h4><%= i18n.indexes %></h4>
                                     <div class="table-container">
                                         <table class="relation-table">
                                             <thead>
                                                 <tr>
-                                                    <th>索引名</th>
-                                                    <th>字段</th>
-                                                    <th>唯一</th>
-                                                    <th>主键</th>
+                                                    <th><%= i18n.idxName %></th>
+                                                    <th><%= i18n.idxColumns %></th>
+                                                    <th><%= i18n.idxUnique %></th>
+                                                    <th><%= i18n.idxPrimary %></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -980,9 +986,9 @@
 
     <footer class="footer">
         <p>
-            本文档由数据字典生成工具于 <%= generatedAtFormatted %> 自动生成
+            <%= i18n.autoGenerated %> <%= generatedAtFormatted %>
             <% if (generatedBy) { %>
-                | 生成者: <%= helper.escapeHtml(generatedBy) %>
+                | <%= i18n.generatedBy %>: <%= helper.escapeHtml(generatedBy) %>
             <% } %>
         </p>
     </footer>

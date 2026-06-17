@@ -19,6 +19,11 @@ export interface ColumnConstraint {
   foreignColumn?: string;
 }
 
+export interface EnumValue {
+  name: string;
+  label?: string;
+}
+
 export interface ColumnInfo {
   name: string;
   dataType: string;
@@ -32,6 +37,7 @@ export interface ColumnInfo {
   comment?: string;
   constraints: ColumnConstraint[];
   businessDescription?: string;
+  enumValues?: EnumValue[];
 }
 
 export interface ForeignKeyInfo {
@@ -75,16 +81,30 @@ export interface BusinessDescription {
   columns?: Record<string, string>;
 }
 
+export interface ConfluenceConfig {
+  baseUrl: string;
+  apiToken: string;
+  user?: string;
+  spaceKey?: string;
+  pageId?: string;
+  pageTitlePattern?: string;
+  tableHeaderRowPattern?: {
+    table: string[];
+    column: string[];
+  };
+}
+
 export interface BusinessConfig {
   title?: string;
   description?: string;
   version?: string;
   tables?: BusinessDescription[];
   generatedBy?: string;
+  confluence?: ConfluenceConfig;
 }
 
 export interface OutputConfig {
-  format: 'html' | 'markdown' | 'json';
+  format: 'html' | 'markdown' | 'json' | 'erd-svg' | 'erd-png';
   outputPath: string;
   title?: string;
   includeForeignKeys?: boolean;
@@ -92,6 +112,7 @@ export interface OutputConfig {
   tableOfContents?: boolean;
   theme?: 'light' | 'dark';
   template?: string;
+  lang?: 'zh' | 'en';
 }
 
 export interface ScanConfig {

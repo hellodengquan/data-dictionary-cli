@@ -46,7 +46,7 @@ export class HtmlExporter extends Exporter {
 
   private prepareTemplateData(): any {
     const theme = this.context.outputConfig.theme || 'light';
-    
+
     return {
       title: this.getTitle(),
       description: this.getDescription(),
@@ -54,6 +54,8 @@ export class HtmlExporter extends Exporter {
       generatedBy: this.getGeneratedBy(),
       generatedAt: this.context.metadata.generatedAt,
       generatedAtFormatted: this.formatDate(this.context.metadata.generatedAt),
+      lang: this.lang,
+      i18n: this.i18n,
       database: {
         name: this.context.metadata.databaseName,
         type: this.context.metadata.databaseType,
@@ -73,14 +75,18 @@ export class HtmlExporter extends Exporter {
         formatDescription: (column: any) => this.getFinalDescription(column),
         escapeHtml: (text: string) => this.escapeHtml(text),
         createAnchorId: (text: string) => this.createAnchorId(text),
-        isPrimaryKey: (column: any) => column.constraints.some((c: any) => c.type === 'PRIMARY KEY'),
-        isForeignKey: (column: any) => column.constraints.some((c: any) => c.type === 'FOREIGN KEY'),
-        getForeignKeyInfo: (column: any) => {
-          const fk = column.constraints.find((c: any) => c.type === 'FOREIGN KEY');
-          return fk ? { table: fk.foreignTable, column: fk.foreignColumn } : null;
+        isPrimaryKey: (column: any) => this.isPrimaryKey(column),
+        isForeignKey: (column: any) => this.isForeignKey(column),
+        getForeignKeyInfo: (column: any) => this.isForeignKey(column),
+        hasBusinessDescription: (item: any) => this.hasBusinessDescription(item),
+        getConstraintBadge: (type: string) => {
+          const info = this.getConstraintBadgeInfo(type);
+          return { class: info.badge, text: info.text };
         },
-        hasBusinessDescription: (item: any) => !!item.businessDescription,
-        getConstraintBadge: (type: string) => this.getConstraintBadge(type)
+        formatEnumValues: (col: any) => {
+          if (!col.enumValues || !col.enumValues.length) return '';
+          return col.enumValues.map((e: any) => e.label || e.name).join(', ');
+        }
       }
     };
   }
@@ -97,17 +103,5 @@ export class HtmlExporter extends Exporter {
       hasForeignKeys: this.shouldIncludeForeignKeys() && table.foreignKeys.length > 0,
       hasIndexes: this.shouldIncludeIndexes() && table.indexes.length > 0
     };
-  }
-
-  private getConstraintBadge(type: string): { class: string; text: string } {
-    const badgeMap: Record<string, { class: string; text: string }> = {
-      'PRIMARY KEY': { class: 'badge-primary', text: '主键' },
-      'FOREIGN KEY': { class: 'badge-foreign', text: '外键' },
-      'UNIQUE': { class: 'badge-unique', text: '唯一' },
-      'NOT NULL': { class: 'badge-notnull', text: '非空' },
-      'DEFAULT': { class: 'badge-default', text: '默认' },
-      'CHECK': { class: 'badge-check', text: '检查' }
-    };
-    return badgeMap[type] || { class: 'badge-default', text: type };
   }
 }

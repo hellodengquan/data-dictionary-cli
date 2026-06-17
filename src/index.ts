@@ -43,7 +43,9 @@ export class DataDictionaryGenerator {
 
     if (this.config.business && Object.keys(this.config.business).length > 0) {
       const merger = new BusinessMerger(this.config.business);
+      await merger.loadRemote();
       metadata = merger.merge(metadata);
+      this.config.business = merger.getBusinessConfig();
     }
 
     const exportContext: ExportContext = {
