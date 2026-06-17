@@ -1,0 +1,94 @@
+{
+  "title": "电商平台数据字典",
+  "description": "本文档详细描述了电商平台数据库的表结构、字段含义和业务规则，供开发、测试和产品人员参考使用。",
+  "version": "2.1.0",
+  "generatedBy": "技术文档团队",
+  "tables": [
+    {
+      "tableName": "users",
+      "description": "用户表，存储平台所有注册用户的基本信息。包括普通用户、商家用户和管理员用户。",
+      "columns": {
+        "id": "用户唯一标识，自增主键。系统内部使用，不对外暴露。",
+        "username": "用户名，用于登录系统。注册后不可修改，全局唯一。",
+        "email": "用户邮箱，用于账号验证、找回密码和接收系统通知。",
+        "phone": "用户手机号码，用于短信验证码登录和接收订单通知。",
+        "password_hash": "用户密码的哈希值，使用 bcrypt 算法加密存储。",
+        "nickname": "用户昵称，显示在个人主页和评论区。",
+        "avatar_url": "用户头像图片的URL地址。",
+        "status": "用户状态：0-未激活，1-正常，2-冻结，3-注销。",
+        "user_type": "用户类型：1-普通用户，2-商家用户，3-管理员。",
+        "last_login_at": "最后登录时间，用于统计用户活跃度。",
+        "last_login_ip": "最后登录IP地址，用于安全审计。",
+        "created_at": "记录创建时间，用户注册时间。",
+        "updated_at": "记录最后更新时间。"
+      }
+    },
+    {
+      "tableName": "products",
+      "description": "商品表，存储平台所有商品的基本信息。每个SKU对应一条记录。",
+      "columns": {
+        "id": "商品唯一标识，自增主键。",
+        "category_id": "所属分类ID，关联 categories 表。",
+        "seller_id": "卖家用户ID，关联 users 表。",
+        "sku": "商品SKU编码，商家自定义的商品编号。",
+        "name": "商品名称，显示在商品列表和详情页。",
+        "description": "商品详细描述，支持富文本格式。",
+        "price": "商品售价，单位为分，避免浮点数精度问题。",
+        "original_price": "商品原价，用于显示折扣信息。",
+        "stock": "库存数量，下单后自动扣减。",
+        "sales_count": "销量统计，每完成一个订单自动加1。",
+        "status": "商品状态：0-下架，1-上架，2-售罄。",
+        "created_at": "记录创建时间。",
+        "updated_at": "记录最后更新时间。"
+      }
+    },
+    {
+      "tableName": "categories",
+      "description": "商品分类表，使用树形结构存储商品分类信息。",
+      "columns": {
+        "id": "分类唯一标识，自增主键。",
+        "parent_id": "父分类ID，顶级分类为NULL。",
+        "name": "分类名称。",
+        "level": "分类层级：1-一级分类，2-二级分类，3-三级分类。",
+        "sort_order": "排序权重，数值越小越靠前。",
+        "status": "状态：0-禁用，1-启用。",
+        "created_at": "记录创建时间。",
+        "updated_at": "记录最后更新时间。"
+      }
+    },
+    {
+      "tableName": "orders",
+      "description": "订单表，存储用户的订单主信息。订单包含多个订单项。",
+      "columns": {
+        "id": "订单唯一标识，自增主键。",
+        "order_no": "订单号，业务系统使用，格式：yyyyMMddHHmmss + 6位随机数。",
+        "user_id": "下单用户ID，关联 users 表。",
+        "total_amount": "订单总金额，单位为分。",
+        "discount_amount": "优惠金额，单位为分。",
+        "payment_amount": "实付金额，单位为分。",
+        "shipping_address": "收货地址JSON快照，包含省市区详细地址、联系人、电话。",
+        "status": "订单状态：1-待支付，2-已支付，3-已发货，4-已完成，5-已取消，6-退款中。",
+        "payment_method": "支付方式：1-微信支付，2-支付宝，3-银行卡。",
+        "payment_time": "支付成功时间。",
+        "shipping_time": "发货时间。",
+        "completed_time": "订单完成时间，用户确认收货后更新。",
+        "created_at": "订单创建时间。",
+        "updated_at": "记录最后更新时间。"
+      }
+    },
+    {
+      "tableName": "order_items",
+      "description": "订单项表，存储订单中的每个商品项信息。",
+      "columns": {
+        "id": "订单项唯一标识，自增主键。",
+        "order_id": "订单ID，关联 orders 表。",
+        "product_id": "商品ID，关联 products 表。",
+        "product_name": "商品名称快照，下单时的商品名称。",
+        "product_price": "商品单价快照，下单时的商品价格，单位为分。",
+        "quantity": "购买数量。",
+        "subtotal": "小计金额，商品单价 × 数量，单位为分。",
+        "created_at": "记录创建时间。"
+      }
+    }
+  ]
+}

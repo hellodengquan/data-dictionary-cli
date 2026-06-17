@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= helper.escapeHtml(title) %></title>
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --secondary-color: #64748b;
+            --accent-color: #06b6d4;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #3b82f6;
+            
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-tertiary: #f1f5f9;
+            --bg-card: #ffffff;
+            --bg-hover: #f1f5f9;
+            
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --text-muted: #94a3b8;
+            
+            --border-color: #e2e8f0;
+            --border-light: #f1f5f9;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            
+            --radius-sm: 0.375rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+        }
+
+        [data-theme="dark"] {
+            --primary-color: #818cf8;
+            --primary-hover: #a5b4fc;
+            --secondary-color: #94a3b8;
+            --accent-color: #22d3ee;
+            --success-color: #34d399;
+            --warning-color: #fbbf24;
+            --danger-color: #f87171;
+            --info-color: #60a5fa;
+            
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --bg-card: #1e293b;
+            --bg-hover: #334155;
+            
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --border-color: #334155;
+            --border-light: #475569;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            color: white;
+            padding: 3rem 0;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .subtitle {
+            font-size: 1.125rem;
+            opacity: 0.9;
+            margin-bottom: 1rem;
+        }
+
+        .header-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+
+        .meta-item .icon {
+            font-size: 1.25rem;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.75rem;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 1.25rem;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 2rem;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        .sidebar h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .toc-list {
+            list-style: none;
+        }
+
+        .toc-list li {
+            margin-bottom: 0.25rem;
+        }
+
+        .toc-list a {
+            display: block;
+            padding: 0.5rem 0.75rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc-list a:hover {
+            background: var(--bg-hover);
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+        }
+
+        .toc-list a.active {
+            background: rgba(79, 70, 229, 0.1);
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+            font-weight: 500;
+        }
+
+        .content {
+            min-width: 0;
+        }
+
+        .section {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .info-card {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-light);
+        }
+
+        .info-card .label {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .info-card .value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            color: white;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+        }
+
+        .stat-card .number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .label {
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+
+        .table-section {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            scroll-margin-top: 1rem;
+        }
+
+        .table-header {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .table-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .table-title .icon {
+            font-size: 1.5rem;
+        }
+
+        .table-description {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .table-description.business {
+            background: rgba(79, 70, 229, 0.1);
+            border-left: 4px solid var(--primary-color);
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+        }
+
+        .table-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 9999px;
+            border: 1px solid transparent;
+        }
+
+        .badge-primary {
+            background: rgba(79, 70, 229, 0.1);
+            color: var(--primary-color);
+            border-color: rgba(79, 70, 229, 0.2);
+        }
+
+        .badge-foreign {
+            background: rgba(6, 182, 212, 0.1);
+            color: var(--accent-color);
+            border-color: rgba(6, 182, 212, 0.2);
+        }
+
+        .badge-unique {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning-color);
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .badge-notnull {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger-color);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .badge-default {
+            background: rgba(100, 116, 139, 0.1);
+            color: var(--secondary-color);
+            border-color: rgba(100, 116, 139, 0.2);
+        }
+
+        .badge-check {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success-color);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        thead {
+            background: var(--bg-tertiary);
+        }
+
+        th {
+            padding: 0.875rem 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 0.875rem 1rem;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-secondary);
+            vertical-align: top;
+        }
+
+        tbody tr:hover {
+            background: var(--bg-hover);
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .col-position {
+            width: 50px;
+            text-align: center;
+            color: var(--text-muted);
+            font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
+        }
+
+        .col-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
+        }
+
+        .col-type {
+            font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
+            color: var(--info-color);
+            white-space: nowrap;
+        }
+
+        .col-nullable {
+            text-align: center;
+        }
+
+        .col-nullable.yes {
+            color: var(--text-muted);
+        }
+
+        .col-nullable.no {
+            color: var(--danger-color);
+            font-weight: 500;
+        }
+
+        .col-default {
+            font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
+            color: var(--text-tertiary);
+            font-size: 0.8125rem;
+        }
+
+        .col-constraints {
+            min-width: 150px;
+        }
+
+        .constraint-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+        }
+
+        .col-description {
+            min-width: 250px;
+        }
+
+        .description-text {
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .description-text.business {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .fk-reference {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            color: var(--accent-color);
+            margin-top: 0.25rem;
+        }
+
+        .fk-reference a {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
+        }
+
+        .fk-reference a:hover {
+            text-decoration: underline;
+        }
+
+        .sub-section {
+            padding: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .sub-section h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sub-section h4 .icon {
+            font-size: 1.25rem;
+        }
+
+        .relation-table td {
+            font-size: 0.8125rem;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: var(--text-tertiary);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 3rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .search-box {
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.625rem 1rem 0.625rem 2.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .search-box::before {
+            content: '🔍';
+            position: absolute;
+            left: 0.875rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1rem;
+        }
+
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem;
+            left: 1.5rem;
+            background: var(--primary-color);
+            color: white;
+            padding: 0.875rem;
+            border-radius: 50%;
+            box-shadow: var(--shadow-lg);
+            cursor: pointer;
+            z-index: 1000;
+            border: none;
+            font-size: 1.25rem;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                display: none;
+                position: fixed;
+                left: 1rem;
+                right: 1rem;
+                top: 1rem;
+                bottom: 1rem;
+                z-index: 999;
+                max-height: none;
+            }
+
+            .sidebar.open {
+                display: block;
+            }
+
+            .mobile-toggle {
+                display: block;
+            }
+
+            .header h1 {
+                font-size: 1.75rem;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .header {
+                padding: 2rem 0;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .section {
+                padding: 1rem;
+            }
+
+            .table-header {
+                padding: 1rem;
+            }
+
+            th, td {
+                padding: 0.625rem 0.75rem;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            background: var(--primary-color);
+            color: white;
+            padding: 0.875rem;
+            border-radius: 50%;
+            box-shadow: var(--shadow-lg);
+            cursor: pointer;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 999;
+            border: none;
+            font-size: 1.25rem;
+        }
+
+        .back-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .back-to-top:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body data-theme="<%= theme %>">
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+        <%= theme === 'dark' ? '☀️' : '🌙' %>
+    </button>
+
+    <button class="mobile-toggle" onclick="toggleSidebar()" title="目录">
+        📋
+    </button>
+
+    <button class="back-to-top" id="backToTop" onclick="scrollToTop()" title="回到顶部">
+        ↑
+    </button>
+
+    <header class="header">
+        <div class="header-content">
+            <h1><%= helper.escapeHtml(title) %></h1>
+            <% if (description) { %>
+                <p class="subtitle"><%= helper.escapeHtml(description) %></p>
+            <% } %>
+            <% if (version) { %>
+                <p class="subtitle">版本: <%= helper.escapeHtml(version) %></p>
+            <% } %>
+            <div class="header-meta">
+                <div class="meta-item">
+                    <span class="icon">🗄️</span>
+                    <span><%= helper.escapeHtml(database.name) %></span>
+                </div>
+                <div class="meta-item">
+                    <span class="icon">🔧</span>
+                    <span><%= helper.escapeHtml(database.type.toUpperCase()) %> <%= database.version ? helper.escapeHtml(database.version) : '' %></span>
+                </div>
+                <div class="meta-item">
+                    <span class="icon">📅</span>
+                    <span><%= generatedAtFormatted %></span>
+                </div>
+                <% if (generatedBy) { %>
+                    <div class="meta-item">
+                        <span class="icon">👤</span>
+                        <span><%= helper.escapeHtml(generatedBy) %></span>
+                    </div>
+                <% } %>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="main-content">
+            <% if (includeTableOfContents) { %>
+                <aside class="sidebar" id="sidebar">
+                    <h3>📋 目录</h3>
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="搜索表名..." oninput="filterTables()">
+                    </div>
+                    <ul class="toc-list" id="tocList">
+                        <% for (let i = 0; i < tables.length; i++) { %>
+                            <% const table = tables[i]; %>
+                            <li data-table-name="<%= table.name %>">
+                                <a href="#<%= table.anchorId %>" onclick="highlightToc(event, '<%= table.anchorId %>')">
+                                    <%= helper.escapeHtml(table.name) %>
+                                    <% if (table.hasDescription) { %>
+                                        <span style="display:block; font-size:0.75rem; color: var(--text-tertiary); margin-top:0.25rem;">
+                                            <%= helper.escapeHtml(table.description).substring(0, 50) %><%= table.description.length > 50 ? '...' : '' %>
+                                        </span>
+                                    <% } %>
+                                </a>
+                            </li>
+                        <% } %>
+                    </ul>
+                </aside>
+            <% } %>
+
+            <main class="content">
+                <section class="section">
+                    <h2 class="section-title">📊 统计信息</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="number"><%= statistics.tableCount %></div>
+                            <div class="label">数据表</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number"><%= statistics.columnCount %></div>
+                            <div class="label">字段数</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2 class="section-title">ℹ️ 数据库信息</h2>
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <div class="label">数据库名称</div>
+                            <div class="value"><%= helper.escapeHtml(database.name) %></div>
+                        </div>
+                        <div class="info-card">
+                            <div class="label">数据库类型</div>
+                            <div class="value"><%= helper.escapeHtml(database.type.toUpperCase()) %></div>
+                        </div>
+                        <% if (database.version) { %>
+                            <div class="info-card">
+                                <div class="label">数据库版本</div>
+                                <div class="value"><%= helper.escapeHtml(database.version) %></div>
+                            </div>
+                        <% } %>
+                        <div class="info-card">
+                            <div class="label">生成时间</div>
+                            <div class="value" style="font-size: 0.9rem;"><%= generatedAtFormatted %></div>
+                        </div>
+                    </div>
+                </section>
+
+                <div id="tablesContainer">
+                    <% for (let i = 0; i < tables.length; i++) { %>
+                        <% const table = tables[i]; %>
+                        <section class="table-section" id="<%= table.anchorId %>" data-table-name="<%= table.name %>">
+                            <div class="table-header">
+                                <div class="table-title">
+                                    <span class="icon">📄</span>
+                                    <span><%= helper.escapeHtml(table.name) %></span>
+                                    <span style="font-size: 0.75rem; color: var(--text-tertiary); font-weight: normal;">
+                                        (<%= table.columns.length %> 个字段)
+                                    </span>
+                                </div>
+                                
+                                <% if (table.hasDescription) { %>
+                                    <p class="table-description <%= table.hasBusinessDescription ? 'business' : '' %>">
+                                        <%= table.hasBusinessDescription ? '📝 ' : '' %><%= helper.escapeHtml(table.description) %>
+                                    </p>
+                                <% } %>
+
+                                <% if (table.hasPrimaryKey) { %>
+                                    <div class="table-meta">
+                                        <span class="badge badge-primary">
+                                            🔑 主键: <%= helper.escapeHtml(table.primaryKeyText) %>
+                                        </span>
+                                    </div>
+                                <% } %>
+                            </div>
+
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th class="col-position">#</th>
+                                            <th>字段名</th>
+                                            <th>数据类型</th>
+                                            <th>可空</th>
+                                            <th>默认值</th>
+                                            <th>约束</th>
+                                            <th>说明</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% for (let j = 0; j < table.columns.length; j++) { %>
+                                            <% const column = table.columns[j]; %>
+                                            <tr>
+                                                <td class="col-position"><%= column.position %></td>
+                                                <td class="col-name">
+                                                    <%= helper.escapeHtml(column.name) %>
+                                                    <% if (helper.isPrimaryKey(column)) { %>
+                                                        <span style="color: var(--primary-color);"> 🔑</span>
+                                                    <% } %>
+                                                    <% if (helper.isForeignKey(column)) { %>
+                                                        <span style="color: var(--accent-color);"> 🔗</span>
+                                                    <% } %>
+                                                </td>
+                                                <td class="col-type"><%= helper.escapeHtml(column.dataType) %></td>
+                                                <td class="col-nullable <%= column.isNullable ? 'yes' : 'no' %>">
+                                                    <%= column.isNullable ? '✓' : '✗' %>
+                                                </td>
+                                                <td class="col-default">
+                                                    <%= column.default ? helper.escapeHtml(column.default) : '-' %>
+                                                </td>
+                                                <td class="col-constraints">
+                                                    <div class="constraint-badges">
+                                                        <% for (let k = 0; k < column.constraints.length; k++) { %>
+                                                            <% const constraint = column.constraints[k]; %>
+                                                            <% const badge = helper.getConstraintBadge(constraint.type); %>
+                                                            <span class="badge <%= badge.class %>" title="<%= helper.escapeHtml(constraint.name) %>">
+                                                                <%= badge.text %>
+                                                            </span>
+                                                        <% } %>
+                                                    </div>
+                                                    <% if (helper.isForeignKey(column)) { %>
+                                                        <% const fkInfo = helper.getForeignKeyInfo(column); %>
+                                                        <% if (fkInfo) { %>
+                                                            <div class="fk-reference">
+                                                                → <a href="#<%= helper.createAnchorId(fkInfo.table) %>">
+                                                                    <%= helper.escapeHtml(fkInfo.table) %>.<%= helper.escapeHtml(fkInfo.column) %>
+                                                                </a>
+                                                            </div>
+                                                        <% } %>
+                                                    <% } %>
+                                                </td>
+                                                <td class="col-description">
+                                                    <div class="description-text <%= helper.hasBusinessDescription(column) ? 'business' : '' %>">
+                                                        <%= helper.hasBusinessDescription(column) ? '📝 ' : '' %>
+                                                        <%= helper.escapeHtml(helper.formatDescription(column)) || '-' %>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <% } %>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <% if (table.hasForeignKeys) { %>
+                                <div class="sub-section">
+                                    <h4><span class="icon">🔗</span> 外键关系</h4>
+                                    <div class="table-container">
+                                        <table class="relation-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>外键名</th>
+                                                    <th>字段</th>
+                                                    <th>关联表</th>
+                                                    <th>关联字段</th>
+                                                    <th>删除规则</th>
+                                                    <th>更新规则</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <% for (let k = 0; k < table.foreignKeys.length; k++) { %>
+                                                    <% const fk = table.foreignKeys[k]; %>
+                                                    <tr>
+                                                        <td class="col-name"><%= helper.escapeHtml(fk.name) %></td>
+                                                        <td><%= helper.escapeHtml(fk.columnName) %></td>
+                                                        <td>
+                                                            <a href="#<%= helper.createAnchorId(fk.foreignTableName) %>">
+                                                                <%= helper.escapeHtml(fk.foreignTableName) %>
+                                                            </a>
+                                                        </td>
+                                                        <td><%= helper.escapeHtml(fk.foreignColumnName) %></td>
+                                                        <td><%= helper.escapeHtml(fk.deleteRule || '-') %></td>
+                                                        <td><%= helper.escapeHtml(fk.updateRule || '-') %></td>
+                                                    </tr>
+                                                <% } %>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            <% } %>
+
+                            <% if (table.hasIndexes) { %>
+                                <div class="sub-section">
+                                    <h4><span class="icon">📇</span> 索引</h4>
+                                    <div class="table-container">
+                                        <table class="relation-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>索引名</th>
+                                                    <th>字段</th>
+                                                    <th>唯一</th>
+                                                    <th>主键</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <% for (let k = 0; k < table.indexes.length; k++) { %>
+                                                    <% const idx = table.indexes[k]; %>
+                                                    <tr>
+                                                        <td class="col-name"><%= helper.escapeHtml(idx.name) %></td>
+                                                        <td><%= helper.escapeHtml(idx.columns.join(', ')) %></td>
+                                                        <td class="col-nullable <%= idx.isUnique ? 'no' : 'yes' %>">
+                                                            <%= idx.isUnique ? '✓' : '✗' %>
+                                                        </td>
+                                                        <td class="col-nullable <%= idx.isPrimary ? 'no' : 'yes' %>">
+                                                            <%= idx.isPrimary ? '✓' : '✗' %>
+                                                        </td>
+                                                    </tr>
+                                                <% } %>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            <% } %>
+                        </section>
+                    <% } %>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>
+            本文档由数据字典生成工具于 <%= generatedAtFormatted %> 自动生成
+            <% if (generatedBy) { %>
+                | 生成者: <%= helper.escapeHtml(generatedBy) %>
+            <% } %>
+        </p>
+    </footer>
+
+    <script>
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            document.querySelector('.theme-toggle').textContent = newTheme === 'dark' ? '☀️' : '🌙';
+            localStorage.setItem('datadict-theme', newTheme);
+        }
+
+        function applySavedTheme() {
+            const savedTheme = localStorage.getItem('datadict-theme');
+            if (savedTheme) {
+                document.body.setAttribute('data-theme', savedTheme);
+                document.querySelector('.theme-toggle').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+            }
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('open');
+        }
+
+        function highlightToc(event, anchorId) {
+            event.preventDefault();
+            document.querySelectorAll('.toc-list a').forEach(a => a.classList.remove('active'));
+            event.target.closest('a').classList.add('active');
+            document.getElementById(anchorId).scrollIntoView({ behavior: 'smooth' });
+            
+            if (window.innerWidth <= 1024) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
+        }
+
+        function filterTables() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const tableSections = document.querySelectorAll('.table-section');
+            const tocItems = document.querySelectorAll('#tocList li');
+
+            tableSections.forEach(section => {
+                const tableName = section.getAttribute('data-table-name').toLowerCase();
+                if (tableName.includes(searchTerm)) {
+                    section.classList.remove('hidden');
+                } else {
+                    section.classList.add('hidden');
+                }
+            });
+
+            tocItems.forEach(item => {
+                const tableName = item.getAttribute('data-table-name').toLowerCase();
+                if (tableName.includes(searchTerm)) {
+                    item.classList.remove('hidden');
+                } else {
+                    item.classList.add('hidden');
+                }
+            });
+        }
+
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function handleScroll() {
+            const backToTop = document.getElementById('backToTop');
+            if (window.scrollY > 300) {
+                backToTop.classList.add('visible');
+            } else {
+                backToTop.classList.remove('visible');
+            }
+
+            updateActiveTocItem();
+        }
+
+        function updateActiveTocItem() {
+            const tableSections = document.querySelectorAll('.table-section');
+            const tocLinks = document.querySelectorAll('.toc-list a');
+            
+            let currentActive = null;
+            
+            tableSections.forEach(section => {
+                const rect = section.getBoundingClientRect();
+                if (rect.top <= 150) {
+                    currentActive = section.getAttribute('id');
+                }
+            });
+
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (currentActive && link.getAttribute('href') === '#' + currentActive) {
+                    link.classList.add('active');
+                    const sidebar = document.getElementById('sidebar');
+                    const sidebarRect = sidebar.getBoundingClientRect();
+                    const linkRect = link.getBoundingClientRect();
+                    
+                    if (linkRect.top < sidebarRect.top || linkRect.bottom > sidebarRect.bottom) {
+                        link.scrollIntoView({ block: 'nearest' });
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            applySavedTheme();
+            window.addEventListener('scroll', handleScroll);
+            handleScroll();
+        });
+    </script>
+</body>
+</html>
