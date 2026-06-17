@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
-import { DatabaseMetadata, BusinessConfig, BusinessDescription, TableInfo, ColumnInfo, ConfluenceConfig } from '../types';
+import { DatabaseMetadata, BusinessConfig, BusinessDescription, TableInfo, ColumnInfo, ConfluenceConfig, ConfluenceAuthBearer, ConfluenceAuthOAuth2 } from '../types';
 
 const DEFAULT_TABLE_HEADER = {
   table: ['表名', 'TableName', 'table_name', 'name'],
@@ -19,8 +19,15 @@ interface ConfluencePage {
   children?: { page?: { results?: ConfluencePage[] } };
 }
 
+interface OAuth2TokenResponse {
+  access_token: string;
+  expires_in?: number;
+  token_type?: string;
+}
+
 export class BusinessMerger {
   private businessConfig: BusinessConfig;
+  private oauth2TokenCache: { token: string; expiresAt: number } | null = null;
 
   constructor(businessConfig: BusinessConfig | string) {
     if (typeof businessConfig === 'string') {
@@ -32,9 +39,88 @@ export class BusinessMerger {
 
   async loadRemote(): Promise<void> {
     if (this.businessConfig.confluence) {
+      this.checkAndWarnTokenExpiry(this.businessConfig.confluence);
       const remote = await this.loadFromConfluence(this.businessConfig.confluence);
       this.mergeRemoteIntoLocal(remote);
     }
+  }
+
+  private checkAndWarnTokenExpiry(cfg: ConfluenceConfig): void {
+    if (cfg.auth.type !== 'bearer') return;
+    const bearer = cfg.auth as ConfluenceAuthBearer;
+    if (!bearer.expiresAt) return;
+
+    const expiresAt = new Date(bearer.expiresAt).getTime();
+    const now = Date.now();
+    const warnDays = bearer.warnDaysBefore ?? 14;
+    const warnMs = warnDays * 24 * 60 * 60 * 1000;
+
+    if (expiresAt - now <= 0) {
+      console.warn(
+        `[Confluence] WARN: PAT has EXPIRED (expiresAt: ${bearer.expiresAt}). ` +
+        `Please rotate a new token to avoid fetch failures.`
+      );
+    } else if (expiresAt - now <= warnMs) {
+      const daysLeft = Math.floor((expiresAt - now) / (24 * 60 * 60 * 1000));
+      console.warn(
+        `[Confluence] WARN: PAT will expire in ${daysLeft} day(s) ` +
+        `(expiresAt: ${bearer.expiresAt}). Consider rotating it soon.`
+      );
+    }
+  }
+
+  private async getAuthHeaders(cfg: ConfluenceConfig): Promise<Record<string, string>> {
+    const auth = cfg.auth;
+
+    if (auth.type === 'basic') {
+      const token = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+      return { 'Authorization': `Basic ${token}` };
+    }
+
+    if (auth.type === 'bearer') {
+      return { 'Authorization': `Bearer ${auth.token}` };
+    }
+
+    if (auth.type === 'oauth2') {
+      const accessToken = await this.getOAuth2AccessToken(auth);
+      return { 'Authorization': `Bearer ${accessToken}` };
+    }
+
+    return {};
+  }
+
+  private async getOAuth2AccessToken(auth: ConfluenceAuthOAuth2): Promise<string> {
+    if (this.oauth2TokenCache && this.oauth2TokenCache.expiresAt - Date.now() > 60_000) {
+      return this.oauth2TokenCache.token;
+    }
+
+    const body = new URLSearchParams();
+    body.append('grant_type', 'client_credentials');
+    body.append('client_id', auth.clientId);
+    body.append('client_secret', auth.clientSecret);
+    if (auth.scope) body.append('scope', auth.scope);
+
+    const tokenResp = await this.httpRequestJson<OAuth2TokenResponse>(
+      auth.tokenEndpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'User-Agent': 'data-dictionary-cli/1.0'
+        },
+        body: body.toString()
+      },
+      30_000
+    );
+
+    const expiresIn = tokenResp.expires_in ?? 3600;
+    this.oauth2TokenCache = {
+      token: tokenResp.access_token,
+      expiresAt: Date.now() + (expiresIn - 60) * 1000
+    };
+
+    return tokenResp.access_token;
   }
 
   private mergeRemoteIntoLocal(remote: BusinessDescription[]): void {
@@ -56,81 +142,121 @@ export class BusinessMerger {
     this.businessConfig.tables = Array.from(existing.values());
   }
 
-  private async loadFromConfluence(cfg: ConfluenceConfig): Promise<BusinessDescription[]> {
-    const base = cfg.baseUrl.replace(/\/+$/, '');
-    const apiPrefix = base.includes('/wiki/') ? '' : '/wiki';
-    const auth = cfg.user
-      ? 'Basic ' + Buffer.from(`${cfg.user}:${cfg.apiToken}`).toString('base64')
-      : 'Bearer ' + cfg.apiToken;
-
-    const httpReq = <T>(urlStr: string): Promise<T> => new Promise((resolve, reject) => {
+  private httpRequestJson<T>(
+    urlStr: string,
+    opts: { method?: string; headers?: Record<string, string>; body?: string },
+    timeoutMs = 30_000
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
       const u = new URL(urlStr);
       const lib = u.protocol === 'https:' ? https : http;
-      const req = lib.request({
-        hostname: u.hostname,
-        port: u.port || undefined,
-        path: u.pathname + u.search,
-        method: 'GET',
-        headers: {
-          'Authorization': auth,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'data-dictionary-cli/1.0'
+      const method = opts.method || 'GET';
+
+      const req = lib.request(
+        {
+          hostname: u.hostname,
+          port: u.port || undefined,
+          path: u.pathname + u.search,
+          method,
+          headers: opts.headers || {},
+          timeout: timeoutMs
+        },
+        (res) => {
+          if ((res.statusCode || 0) >= 400) {
+            reject(
+              new Error(
+                `HTTP ${res.statusCode} ${res.statusMessage || ''} for ${method} ${urlStr}`
+              )
+            );
+            return;
+          }
+          let body = '';
+          res.on('data', (chunk) => {
+            body += chunk.toString();
+          });
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(body) as T);
+            } catch (e) {
+              reject(e);
+            }
+          });
         }
-      }, (res) => {
-        if ((res.statusCode || 0) >= 400) {
-          reject(new Error(`Confluence API error: ${res.statusCode} ${res.statusMessage} (${urlStr})`));
-          return;
-        }
-        let body = '';
-        res.on('data', (chunk) => { body += chunk.toString(); });
-        res.on('end', () => {
-          try { resolve(JSON.parse(body) as T); } catch (e) { reject(e); }
-        });
-      });
+      );
+
       req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy(new Error(`Request timed out (${timeoutMs}ms): ${urlStr}`));
+      });
+
+      if (opts.body) {
+        req.write(opts.body);
+      }
       req.end();
     });
+  }
+
+  private async loadFromConfluence(cfg: ConfluenceConfig): Promise<BusinessDescription[]> {
+    const apiBase = cfg.apiUrl.replace(/\/+$/, '');
+    const authHeaders = await this.getAuthHeaders(cfg);
+    const baseHeaders = {
+      ...authHeaders,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'data-dictionary-cli/1.0'
+    };
+    const timeout = cfg.timeoutMs ?? 30_000;
+
+    const httpGet = <T>(path: string) =>
+      this.httpRequestJson<T>(`${apiBase}${path}`, { headers: baseHeaders }, timeout);
 
     let targetPage: ConfluencePage | undefined;
 
     if (cfg.pageId) {
-      targetPage = await httpReq<ConfluencePage>(
-        `${base}${apiPrefix}/rest/api/content/${cfg.pageId}?expand=body.storage,children.page`
+      const expand = cfg.recursive
+        ? 'body.storage,children.page,children.page.body.storage'
+        : 'body.storage';
+      targetPage = await httpGet<ConfluencePage>(
+        `/content/${cfg.pageId}?expand=${expand}`
       );
-    } else if (cfg.spaceKey && cfg.pageTitlePattern) {
-      const searchTitle = cfg.pageTitlePattern.replace(/\*/g, '');
-      const searchRes = await httpReq<any>(
-        `${base}${apiPrefix}/rest/api/content?type=page&spaceKey=${cfg.spaceKey}&title=${encodeURIComponent(searchTitle)}&expand=body.storage,children.page&limit=50`
-      );
-      const pages: ConfluencePage[] = searchRes.results || [];
-      const regex = new RegExp('^' + cfg.pageTitlePattern.replace(/\*/g, '.*') + '$');
-      targetPage = pages.find(p => regex.test(p.title)) || pages[0];
-      if (targetPage) {
-        targetPage = await httpReq<ConfluencePage>(
-          `${base}${apiPrefix}/rest/api/content/${targetPage.id}?expand=body.storage,children.page`
-        );
-      }
     } else if (cfg.spaceKey) {
-      const list = await httpReq<any>(
-        `${base}${apiPrefix}/rest/api/content?type=page&spaceKey=${cfg.spaceKey}&expand=body.storage,children.page&limit=100`
+      const titlePattern = cfg.titlePattern || '';
+      const list = await httpGet<any>(
+        `/content?type=page&spaceKey=${cfg.spaceKey}` +
+          `&expand=body.storage,children.page&limit=200`
       );
-      targetPage = { id: 'root', title: cfg.spaceKey, children: { page: { results: list.results || [] } } };
+      const pages: ConfluencePage[] = list.results || [];
+
+      if (titlePattern && titlePattern.includes('?<table>')) {
+        const regex = new RegExp(titlePattern);
+        const filtered = pages.filter((p) => regex.test(p.title));
+        targetPage = {
+          id: 'root',
+          title: cfg.spaceKey,
+          children: { page: { results: filtered } }
+        };
+      } else {
+        targetPage = {
+          id: 'root',
+          title: cfg.spaceKey,
+          children: { page: { results: pages } }
+        };
+      }
     }
 
     if (!targetPage) {
       return [];
     }
 
-    const allPages: ConfluencePage[] = [targetPage];
-    const collectChildren = (p: ConfluencePage) => {
+    const allPages: ConfluencePage[] = [];
+    const maxDepth = cfg.maxDepth ?? (cfg.recursive ? 5 : 1);
+    const collect = (p: ConfluencePage, depth = 0) => {
+      allPages.push(p);
+      if (depth >= maxDepth) return;
       const kids = p.children?.page?.results || [];
-      for (const c of kids) {
-        allPages.push(c);
-        collectChildren(c);
-      }
+      for (const c of kids) collect(c, depth + 1);
     };
-    collectChildren(targetPage);
+    collect(targetPage);
 
     const allDesc: BusinessDescription[] = [];
 

@@ -24,6 +24,29 @@ const POSTGRES_ADVANCED_TYPES: Record<string, string> = {
   'txid_snapshot': 'TXID_SNAPSHOT'
 };
 
+const POSTGRES_TYPE_ALIASES: Record<string, string> = {
+  'int2': 'SMALLINT',
+  'int4': 'INTEGER',
+  'int8': 'BIGINT',
+  'float4': 'REAL',
+  'float8': 'DOUBLE PRECISION',
+  'numeric': 'NUMERIC',
+  'decimal': 'DECIMAL',
+  'varchar': 'CHARACTER VARYING',
+  'bpchar': 'CHARACTER',
+  'char': 'CHAR',
+  'text': 'TEXT',
+  'bool': 'BOOLEAN',
+  'timetz': 'TIME WITH TIME ZONE',
+  'timestamptz': 'TIMESTAMP WITH TIME ZONE',
+  'timestamp': 'TIMESTAMP WITHOUT TIME ZONE',
+  'date': 'DATE',
+  'time': 'TIME WITHOUT TIME ZONE',
+  'name': 'NAME',
+  'regclass': 'REGCLASS',
+  'oid': 'OID'
+};
+
 export class PostgresConnector extends DatabaseConnector {
   private client!: Client;
   private enumCache = new Map<string, EnumValue[]>();
@@ -197,14 +220,39 @@ export class PostgresConnector extends DatabaseConnector {
       const rawType = String(col.data_type || '');
 
       let effectiveDataType = rawType;
-      if (POSTGRES_ADVANCED_TYPES[udt]) {
+      let isArray = false;
+      let arrayItemType: string | undefined;
+      let enumValues: EnumValue[] | undefined;
+
+      if (rawType === 'ARRAY') {
+        isArray = true;
+        const itemUdt = udt.replace(/^_/, '').toLowerCase();
+
+        if (POSTGRES_ADVANCED_TYPES[itemUdt]) {
+          arrayItemType = POSTGRES_ADVANCED_TYPES[itemUdt];
+        } else if (POSTGRES_TYPE_ALIASES[itemUdt]) {
+          arrayItemType = POSTGRES_TYPE_ALIASES[itemUdt];
+        } else if (this.enumCache.has(itemUdt)) {
+          arrayItemType = itemUdt.toUpperCase();
+          enumValues = this.enumCache.get(itemUdt);
+        } else {
+          arrayItemType = itemUdt.toUpperCase();
+        }
+
+        if (col.character_maximum_length && arrayItemType?.toUpperCase().includes('CHAR')) {
+          arrayItemType = `${arrayItemType}(${col.character_maximum_length})`;
+        }
+
+        effectiveDataType = `${arrayItemType}[]`;
+      } else if (POSTGRES_ADVANCED_TYPES[udt]) {
         effectiveDataType = POSTGRES_ADVANCED_TYPES[udt];
       } else if (rawType === 'USER-DEFINED' && this.enumCache.has(udt)) {
-        effectiveDataType = `ENUM (${this.enumCache.get(udt)!.map(e => "'" + e.name + "'").join(', ')})`;
+        effectiveDataType = 'ENUM';
+        enumValues = this.enumCache.get(udt);
       } else if (rawType === 'USER-DEFINED') {
         effectiveDataType = udt.toUpperCase();
-      } else if (rawType === 'ARRAY') {
-        effectiveDataType = `${udt.replace(/^_/, '').toUpperCase()}[]`;
+      } else if (POSTGRES_TYPE_ALIASES[udt]) {
+        effectiveDataType = POSTGRES_TYPE_ALIASES[udt];
       }
 
       if (col.constraintTypes.includes('PRIMARY KEY')) {
@@ -255,12 +303,11 @@ export class PostgresConnector extends DatabaseConnector {
         numericScale: col.numeric_scale || undefined,
         position: col.ordinal_position,
         comment: col.column_comment || undefined,
-        constraints
+        constraints,
+        isArray,
+        arrayItemType,
+        enumValues
       };
-
-      if (this.enumCache.has(udt)) {
-        colInfo.enumValues = this.enumCache.get(udt)!;
-      }
 
       columns.push(colInfo);
     }

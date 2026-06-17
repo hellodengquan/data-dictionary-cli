@@ -38,6 +38,9 @@ export interface ColumnInfo {
   constraints: ColumnConstraint[];
   businessDescription?: string;
   enumValues?: EnumValue[];
+  isArray?: boolean;
+  arrayItemType?: string;
+  arrayDimensions?: number;
 }
 
 export interface ForeignKeyInfo {
@@ -81,17 +84,44 @@ export interface BusinessDescription {
   columns?: Record<string, string>;
 }
 
+export type ConfluenceAuthType = 'basic' | 'bearer' | 'oauth2';
+
+export interface ConfluenceAuthBasic {
+  type: 'basic';
+  username: string;
+  password: string;
+}
+
+export interface ConfluenceAuthBearer {
+  type: 'bearer';
+  token: string;
+  expiresAt?: string;
+  warnDaysBefore?: number;
+}
+
+export interface ConfluenceAuthOAuth2 {
+  type: 'oauth2';
+  clientId: string;
+  clientSecret: string;
+  tokenEndpoint: string;
+  scope?: string;
+}
+
+export type ConfluenceAuth = ConfluenceAuthBasic | ConfluenceAuthBearer | ConfluenceAuthOAuth2;
+
 export interface ConfluenceConfig {
-  baseUrl: string;
-  apiToken: string;
-  user?: string;
-  spaceKey?: string;
+  apiUrl: string;
+  auth: ConfluenceAuth;
   pageId?: string;
-  pageTitlePattern?: string;
+  spaceKey?: string;
+  titlePattern?: string;
+  recursive?: boolean;
+  maxDepth?: number;
   tableHeaderRowPattern?: {
     table: string[];
     column: string[];
   };
+  timeoutMs?: number;
 }
 
 export interface BusinessConfig {

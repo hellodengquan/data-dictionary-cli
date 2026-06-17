@@ -18,7 +18,7 @@ export abstract class Exporter {
     this.i18n = getI18n(this.lang);
   }
 
-  abstract export(): Promise<string>;
+  abstract export(): Promise<string | Buffer>;
 
   protected getTitle(): string {
     return this.context.outputConfig.title ||

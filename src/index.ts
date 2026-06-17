@@ -61,10 +61,10 @@ export class DataDictionaryGenerator {
       this.writeOutput(content, this.config.output.outputPath);
     }
 
-    return content;
+    return typeof content === 'string' ? content : content.toString('base64');
   }
 
-  private writeOutput(content: string, outputPath: string): void {
+  private writeOutput(content: string | Buffer, outputPath: string): void {
     const resolvedPath = path.resolve(outputPath);
     const dir = path.dirname(resolvedPath);
     
@@ -72,7 +72,11 @@ export class DataDictionaryGenerator {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    fs.writeFileSync(resolvedPath, content, 'utf-8');
+    if (Buffer.isBuffer(content)) {
+      fs.writeFileSync(resolvedPath, content);
+    } else {
+      fs.writeFileSync(resolvedPath, content, 'utf-8');
+    }
   }
 
   getConfig(): GeneratorConfig {
